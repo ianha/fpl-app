@@ -82,7 +82,8 @@ The API runs at [http://localhost:4000](http://localhost:4000).
 - Run all tests: `npm run test`
 - Refresh data: `npm run sync`
 - Refresh a single gameweek: `npm run sync -- --gameweek 29`
-- Force a refresh even if the upstream snapshot is unchanged: `npm run sync -- --gameweek 29 --force`
+- Force a full refresh even if the upstream snapshot is unchanged: `npm run sync -- --force`
+- Force a gameweek refresh even if the upstream snapshot is unchanged: `npm run sync -- --gameweek 29 --force`
 
 ## Environment file
 
@@ -120,6 +121,12 @@ npm run sync -- --gameweek 29
 
 This mode still refreshes global bootstrap data and fixtures, but it only refreshes detailed player summaries for players on teams involved in that gameweek's fixtures.
 If the upstream snapshot for that gameweek has not changed, it noops. If the prior run failed, rerunning the same command resumes the unfinished players. Use `--force` to refresh it anyway.
+
+To bypass the noop behavior intentionally:
+
+```bash
+npm run sync -- --gameweek 29 --force
+```
 
 ## Documentation
 

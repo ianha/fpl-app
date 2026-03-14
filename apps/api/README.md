@@ -41,7 +41,8 @@ The player and player-history models include advanced public FPL fields such as:
 - Run the API in development: `npm run dev -w @fpl/api`
 - Run the sync job: `npm run sync -w @fpl/api`
 - Run the sync job for one gameweek: `npm run sync -w @fpl/api -- --gameweek 29`
-- Force a refresh even when the snapshot has not changed: `npm run sync -w @fpl/api -- --gameweek 29 --force`
+- Force a full refresh even when the snapshot has not changed: `npm run sync -w @fpl/api -- --force`
+- Force a gameweek refresh even when the snapshot has not changed: `npm run sync -w @fpl/api -- --gameweek 29 --force`
 - Run tests: `npm run test -w @fpl/api`
 - Build the package: `npm run build -w @fpl/api`
 
@@ -83,7 +84,7 @@ All outbound requests to the public FPL API are rate-limited through a shared cl
 4. Refresh player history and future fixtures one player at a time.
 5. Record a sync run with timestamps and status.
 
-If a player refresh fails, successful players remain committed. The failed player is marked with an error, and the next run resumes from the remaining unsynced or failed players. This makes the process safe for weekly refreshes and recovery after interruptions.
+If a player refresh fails, successful players remain committed. The failed player is marked with an error, and rerunning the same command resumes the unfinished players for that same upstream snapshot. This makes the process safe for weekly refreshes and recovery after interruptions.
 
 The sync CLI is intentionally verbose and prints progress as it works, including:
 
