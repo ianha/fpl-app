@@ -43,6 +43,9 @@ export type PlayerCard = {
   expectedGoals: number;
   expectedAssists: number;
   expectedGoalInvolvements: number;
+  expectedGoalPerformance: number;
+  expectedAssistPerformance: number;
+  expectedGoalInvolvementPerformance: number;
   expectedGoalsConceded: number;
   cleanSheetsPer90: number;
   starts: number;
@@ -86,6 +89,9 @@ export type PlayerHistoryPoint = {
   expectedGoals: number;
   expectedAssists: number;
   expectedGoalInvolvements: number;
+  expectedGoalPerformance: number;
+  expectedAssistPerformance: number;
+  expectedGoalInvolvementPerformance: number;
   expectedGoalsConceded: number;
   tackles: number;
   recoveries: number;

@@ -36,6 +36,8 @@ function migratePlayerHistoryPrimaryKey(db: Database.Database) {
         player_id, round, total_points, minutes, goals_scored, assists,
         clean_sheets, bonus, bps, creativity, influence, threat, ict_index,
         expected_goals, expected_assists, expected_goal_involvements,
+        expected_goal_performance, expected_assist_performance,
+        expected_goal_involvement_performance,
         expected_goals_conceded, tackles, recoveries,
         clearances_blocks_interceptions, defensive_contribution, starts,
         opponent_team, value, was_home, kickoff_time, updated_at
@@ -43,7 +45,9 @@ function migratePlayerHistoryPrimaryKey(db: Database.Database) {
       SELECT
         player_id, round, total_points, minutes, goals_scored, assists,
         clean_sheets,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0,
+        0, 0, 0, 0, 0, 0,
         opponent_team, value, was_home, kickoff_time, updated_at
       FROM player_history_legacy
     `);
@@ -69,6 +73,26 @@ function ensureColumns(
   }
 }
 
+function backfillDerivedPerformanceColumns(db: Database.Database) {
+  db.exec(`
+    UPDATE players
+    SET
+      expected_goal_performance = goals_scored - expected_goals,
+      expected_assist_performance = assists - expected_assists,
+      expected_goal_involvement_performance =
+        (goals_scored - expected_goals) + (assists - expected_assists)
+  `);
+
+  db.exec(`
+    UPDATE player_history
+    SET
+      expected_goal_performance = goals_scored - expected_goals,
+      expected_assist_performance = assists - expected_assists,
+      expected_goal_involvement_performance =
+        (goals_scored - expected_goals) + (assists - expected_assists)
+  `);
+}
+
 export function createDatabase(dbPath = env.dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
@@ -87,6 +111,18 @@ export function createDatabase(dbPath = env.dbPath) {
     {
       name: "expected_goal_involvements",
       sql: "expected_goal_involvements REAL NOT NULL DEFAULT 0",
+    },
+    {
+      name: "expected_goal_performance",
+      sql: "expected_goal_performance REAL NOT NULL DEFAULT 0",
+    },
+    {
+      name: "expected_assist_performance",
+      sql: "expected_assist_performance REAL NOT NULL DEFAULT 0",
+    },
+    {
+      name: "expected_goal_involvement_performance",
+      sql: "expected_goal_involvement_performance REAL NOT NULL DEFAULT 0",
     },
     {
       name: "expected_goals_conceded",
@@ -118,6 +154,18 @@ export function createDatabase(dbPath = env.dbPath) {
       sql: "expected_goal_involvements REAL NOT NULL DEFAULT 0",
     },
     {
+      name: "expected_goal_performance",
+      sql: "expected_goal_performance REAL NOT NULL DEFAULT 0",
+    },
+    {
+      name: "expected_assist_performance",
+      sql: "expected_assist_performance REAL NOT NULL DEFAULT 0",
+    },
+    {
+      name: "expected_goal_involvement_performance",
+      sql: "expected_goal_involvement_performance REAL NOT NULL DEFAULT 0",
+    },
+    {
       name: "expected_goals_conceded",
       sql: "expected_goals_conceded REAL NOT NULL DEFAULT 0",
     },
@@ -141,6 +189,7 @@ export function createDatabase(dbPath = env.dbPath) {
     { name: "requested_snapshot", sql: "requested_snapshot TEXT" },
     { name: "completed_snapshot", sql: "completed_snapshot TEXT" },
   ]);
+  backfillDerivedPerformanceColumns(db);
   return db;
 }
 

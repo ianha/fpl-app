@@ -40,6 +40,9 @@ describe("API routes", () => {
     expect(response.fixtures[0].teamHShortName).toBe("ARS");
     expect(playerDetail?.player.expectedGoals).toBe(14.6);
     expect(playerDetail?.player.expectedGoalInvolvements).toBe(25.8);
+    expect(playerDetail?.player.expectedGoalPerformance).toBeCloseTo(1.4);
+    expect(playerDetail?.player.expectedAssistPerformance).toBeCloseTo(0.8);
+    expect(playerDetail?.player.expectedGoalInvolvementPerformance).toBeCloseTo(2.2);
     expect(playerDetail?.history.some((history) => history.tackles === 2)).toBe(true);
   });
 });

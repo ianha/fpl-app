@@ -26,6 +26,9 @@ The player and player-history models include advanced public FPL fields such as:
 - `expected_goals`
 - `expected_assists`
 - `expected_goal_involvements`
+- `expected_goal_performance`
+- `expected_assist_performance`
+- `expected_goal_involvement_performance`
 - `expected_goals_conceded`
 - `tackles`
 - `recoveries`
@@ -35,6 +38,12 @@ The player and player-history models include advanced public FPL fields such as:
 - `ict_index`
 - `bonus`
 - `bps`
+
+The `expected_*_performance` fields are calculated locally during sync and backfill:
+
+- `expected_goal_performance = goals_scored - expected_goals`
+- `expected_assist_performance = assists - expected_assists`
+- `expected_goal_involvement_performance = expected_goal_performance + expected_assist_performance`
 
 ## Commands
 

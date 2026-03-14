@@ -8,7 +8,7 @@ This project is a TypeScript monorepo that recreates the core public experience 
 - An idempotent refresh flow that can resume after errors
 - A local HTTP API for the frontend and external tooling
 - A responsive React frontend styled with the Fantasy Premier League color palette
-- Advanced public player metrics such as xG, xA, xGI, tackles, and related history stats
+- Advanced public player metrics such as xG, xA, xGI, xGP, xAP, xGIP, tackles, and related history stats
 - Automated tests for backend services, API routes, and frontend rendering
 
 ## Public FPL endpoints used

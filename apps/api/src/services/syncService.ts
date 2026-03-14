@@ -24,6 +24,27 @@ function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0);
 }
 
+function calculateExpectedGoalPerformance(
+  goalsScored: number,
+  expectedGoals: number,
+) {
+  return goalsScored - expectedGoals;
+}
+
+function calculateExpectedAssistPerformance(
+  assists: number,
+  expectedAssists: number,
+) {
+  return assists - expectedAssists;
+}
+
+function calculateExpectedGoalInvolvementPerformance(
+  expectedGoalPerformance: number,
+  expectedAssistPerformance: number,
+) {
+  return expectedGoalPerformance + expectedAssistPerformance;
+}
+
 export class SyncService {
   constructor(
     private readonly db: AppDatabase,
@@ -272,8 +293,8 @@ export class SyncService {
          updated_at = excluded.updated_at`,
     );
     const insertPlayer = this.db.prepare(
-      `INSERT INTO players (id, web_name, first_name, second_name, team_id, position_id, now_cost, total_points, form, selected_by_percent, points_per_game, goals_scored, assists, clean_sheets, minutes, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goals_conceded, clean_sheets_per_90, starts, tackles, recoveries, defensive_contribution, status, updated_at)
-       VALUES (@id, @web_name, @first_name, @second_name, @team_id, @position_id, @now_cost, @total_points, @form, @selected_by_percent, @points_per_game, @goals_scored, @assists, @clean_sheets, @minutes, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goals_conceded, @clean_sheets_per_90, @starts, @tackles, @recoveries, @defensive_contribution, @status, @updated_at)
+      `INSERT INTO players (id, web_name, first_name, second_name, team_id, position_id, now_cost, total_points, form, selected_by_percent, points_per_game, goals_scored, assists, clean_sheets, minutes, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, clean_sheets_per_90, starts, tackles, recoveries, defensive_contribution, status, updated_at)
+       VALUES (@id, @web_name, @first_name, @second_name, @team_id, @position_id, @now_cost, @total_points, @form, @selected_by_percent, @points_per_game, @goals_scored, @assists, @clean_sheets, @minutes, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @clean_sheets_per_90, @starts, @tackles, @recoveries, @defensive_contribution, @status, @updated_at)
        ON CONFLICT(id) DO UPDATE SET
          web_name = excluded.web_name,
          first_name = excluded.first_name,
@@ -298,6 +319,9 @@ export class SyncService {
          expected_goals = excluded.expected_goals,
          expected_assists = excluded.expected_assists,
          expected_goal_involvements = excluded.expected_goal_involvements,
+         expected_goal_performance = excluded.expected_goal_performance,
+         expected_assist_performance = excluded.expected_assist_performance,
+         expected_goal_involvement_performance = excluded.expected_goal_involvement_performance,
          expected_goals_conceded = excluded.expected_goals_conceded,
          clean_sheets_per_90 = excluded.clean_sheets_per_90,
          starts = excluded.starts,
@@ -340,6 +364,16 @@ export class SyncService {
       }
 
       for (const player of bootstrap.elements) {
+        const expectedGoals = toNumber(player.expected_goals);
+        const expectedAssists = toNumber(player.expected_assists);
+        const expectedGoalPerformance = calculateExpectedGoalPerformance(
+          player.goals_scored,
+          expectedGoals,
+        );
+        const expectedAssistPerformance = calculateExpectedAssistPerformance(
+          player.assists,
+          expectedAssists,
+        );
         insertPlayer.run({
           id: player.id,
           web_name: player.web_name,
@@ -362,9 +396,16 @@ export class SyncService {
           influence: toNumber(player.influence),
           threat: toNumber(player.threat),
           ict_index: toNumber(player.ict_index),
-          expected_goals: toNumber(player.expected_goals),
-          expected_assists: toNumber(player.expected_assists),
+          expected_goals: expectedGoals,
+          expected_assists: expectedAssists,
           expected_goal_involvements: toNumber(player.expected_goal_involvements),
+          expected_goal_performance: expectedGoalPerformance,
+          expected_assist_performance: expectedAssistPerformance,
+          expected_goal_involvement_performance:
+            calculateExpectedGoalInvolvementPerformance(
+              expectedGoalPerformance,
+              expectedAssistPerformance,
+            ),
           expected_goals_conceded: toNumber(player.expected_goals_conceded),
           clean_sheets_per_90: toNumber(player.clean_sheets_per_90),
           starts: player.starts,
@@ -542,8 +583,8 @@ export class SyncService {
       "DELETE FROM player_future_fixtures WHERE player_id = ?",
     );
     const insertHistory = this.db.prepare(
-      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, starts, opponent_team, value, was_home, kickoff_time, updated_at)
-       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @starts, @opponent_team, @value, @was_home, @kickoff_time, @updated_at)`,
+      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, starts, opponent_team, value, was_home, kickoff_time, updated_at)
+       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @starts, @opponent_team, @value, @was_home, @kickoff_time, @updated_at)`,
     );
     const insertFutureFixture = this.db.prepare(
       `INSERT INTO player_future_fixtures (player_id, fixture_id, code, event_id, kickoff_time, team_h, team_a, team_h_score, team_a_score, finished, started, updated_at)
@@ -574,6 +615,16 @@ export class SyncService {
         clearFutureFixtures.run(playerId);
 
         for (const history of summary.history) {
+          const expectedGoals = toNumber(history.expected_goals);
+          const expectedAssists = toNumber(history.expected_assists);
+          const expectedGoalPerformance = calculateExpectedGoalPerformance(
+            history.goals_scored,
+            expectedGoals,
+          );
+          const expectedAssistPerformance = calculateExpectedAssistPerformance(
+            history.assists,
+            expectedAssists,
+          );
           insertHistory.run({
             player_id: playerId,
             round: history.round,
@@ -588,9 +639,16 @@ export class SyncService {
             influence: toNumber(history.influence),
             threat: toNumber(history.threat),
             ict_index: toNumber(history.ict_index),
-            expected_goals: toNumber(history.expected_goals),
-            expected_assists: toNumber(history.expected_assists),
+            expected_goals: expectedGoals,
+            expected_assists: expectedAssists,
             expected_goal_involvements: toNumber(history.expected_goal_involvements),
+            expected_goal_performance: expectedGoalPerformance,
+            expected_assist_performance: expectedAssistPerformance,
+            expected_goal_involvement_performance:
+              calculateExpectedGoalInvolvementPerformance(
+                expectedGoalPerformance,
+                expectedAssistPerformance,
+              ),
             expected_goals_conceded: toNumber(history.expected_goals_conceded),
             tackles: history.tackles,
             recoveries: history.recoveries,

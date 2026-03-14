@@ -47,14 +47,29 @@ describe("SyncService", () => {
         .get() as { count: number };
       const advancedStats = db
         .prepare(
-          "SELECT expected_goals AS expectedGoals, expected_assists AS expectedAssists, tackles FROM players WHERE id = 10",
+          `SELECT expected_goals AS expectedGoals, expected_assists AS expectedAssists,
+                  expected_goal_performance AS expectedGoalPerformance,
+                  expected_assist_performance AS expectedAssistPerformance,
+                  expected_goal_involvement_performance AS expectedGoalInvolvementPerformance,
+                  tackles
+           FROM players WHERE id = 10`,
         )
-        .get() as { expectedGoals: number; expectedAssists: number; tackles: number };
+        .get() as {
+          expectedGoals: number;
+          expectedAssists: number;
+          expectedGoalPerformance: number;
+          expectedAssistPerformance: number;
+          expectedGoalInvolvementPerformance: number;
+          tackles: number;
+        };
 
       expect(players.count).toBe(3);
       expect(history.count).toBe(6);
       expect(advancedStats.expectedGoals).toBe(14.6);
       expect(advancedStats.expectedAssists).toBe(11.2);
+      expect(advancedStats.expectedGoalPerformance).toBeCloseTo(1.4);
+      expect(advancedStats.expectedAssistPerformance).toBeCloseTo(0.8);
+      expect(advancedStats.expectedGoalInvolvementPerformance).toBeCloseTo(2.2);
       expect(advancedStats.tackles).toBe(54);
       expect(getElementSummary).toHaveBeenCalledTimes(3);
     });
@@ -113,7 +128,11 @@ describe("SyncService", () => {
     const sakaHistory = db
       .prepare(
         `SELECT expected_goals AS expectedGoals, expected_assists AS expectedAssists,
-                expected_goal_involvements AS expectedGoalInvolvements, tackles
+                expected_goal_involvements AS expectedGoalInvolvements,
+                expected_goal_performance AS expectedGoalPerformance,
+                expected_assist_performance AS expectedAssistPerformance,
+                expected_goal_involvement_performance AS expectedGoalInvolvementPerformance,
+                tackles
          FROM player_history
          WHERE player_id = 10
          ORDER BY kickoff_time
@@ -123,6 +142,9 @@ describe("SyncService", () => {
         expectedGoals: number;
         expectedAssists: number;
         expectedGoalInvolvements: number;
+        expectedGoalPerformance: number;
+        expectedAssistPerformance: number;
+        expectedGoalInvolvementPerformance: number;
         tackles: number;
       };
 
@@ -132,6 +154,9 @@ describe("SyncService", () => {
     expect(sakaHistory.expectedGoals).toBe(0.64);
     expect(sakaHistory.expectedAssists).toBe(0.31);
     expect(sakaHistory.expectedGoalInvolvements).toBe(0.95);
+    expect(sakaHistory.expectedGoalPerformance).toBeCloseTo(0.36);
+    expect(sakaHistory.expectedAssistPerformance).toBeCloseTo(0.69);
+    expect(sakaHistory.expectedGoalInvolvementPerformance).toBeCloseTo(1.05);
     expect(sakaHistory.tackles).toBe(4);
 
     await service.syncGameweek(1);
