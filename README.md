@@ -14,7 +14,7 @@ A TypeScript monorepo that mirrors the public experience of [fantasy.premierleag
 
 - **Express HTTP API serving player, fixture, gameweek, and team data.** A thin read-only API layer sits on top of the database, exposing structured JSON endpoints that the frontend (and any external tool) can consume.
 
-- **React frontend with FPL-inspired design, player search, and per-player stat history.** A responsive dashboard that lets you browse the top players, search the full player pool, see fixture schedules, and dive into game-by-game history for any individual player.
+- **Multi-page React frontend with premium FPL-inspired design.** A dark-themed, glassmorphism UI across five pages: a dashboard, full player browser with search and filters, per-player stat detail with charts, a fixtures browser with gameweek navigation, and a team detail page. Built with Tailwind CSS, shadcn/ui components, framer-motion animations, and Recharts for data visualisation.
 
 - **Local JPEG asset library for players and teams.** Sync runs download official player portraits and club badges into `apps/api/data/assets`, save their local paths in SQLite, and serve them from the API under `/assets/...`. If FPL has not published a portrait yet, the sync generates a local placeholder JPEG instead of failing.
 
@@ -35,6 +35,10 @@ A TypeScript monorepo that mirrors the public experience of [fantasy.premierleag
 | Database | SQLite via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) |
 | Frontend framework | React 19 |
 | Frontend build tool | Vite 7 |
+| Frontend styling | Tailwind CSS v4 + shadcn/ui (new-york) |
+| Frontend routing | React Router v7 |
+| Frontend charting | Recharts (area, radar charts) |
+| Frontend animations | framer-motion |
 | Test runner | [Vitest](https://vitest.dev) 3 |
 | Frontend test utilities | [React Testing Library](https://testing-library.com/docs/react-testing-library/intro) |
 | TypeScript runner (dev) | [tsx](https://github.com/privatenumber/tsx) |
@@ -313,7 +317,7 @@ All endpoints are served by the Express API on port 4000. All responses are JSON
 | `GET` | `/api/players` | `search`, `team`, `position`, `sort` | Player search and filter (max 100 results) |
 | `GET` | `/api/players/:id` | — | Full player detail: stats + last 8 gameweeks history + upcoming fixtures |
 
-**Player sort options:** `total_points` (default), `form`, `now_cost`, `minutes`
+**Player sort options:** `total_points` (default), `form`, `cost`, `minutes`
 
 ### Example requests
 
@@ -446,6 +450,11 @@ Tests are written with [Vitest](https://vitest.dev). API tests use an in-memory 
 | [express](https://expressjs.com) | HTTP server and routing | Industry-standard, minimal boilerplate, extensive ecosystem |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | Synchronous SQLite access | Synchronous API is ideal for CLI scripts; faster than async alternatives for the read-heavy queries this project makes |
 | [react](https://react.dev) | Frontend UI | Widely known, excellent TypeScript support, large ecosystem |
+| [react-router-dom](https://reactrouter.com) | Client-side routing | Industry-standard routing for React; enables five distinct pages with URL-addressable routes |
+| [tailwindcss](https://tailwindcss.com) | Utility-first CSS framework | Eliminates the need for custom CSS files; the `@tailwindcss/vite` plugin integrates with Vite at zero config overhead |
+| [shadcn/ui](https://ui.shadcn.com) | Accessible, composable UI components | Pre-built, headless components (buttons, inputs, selects, sheets) that are fully owned by the project — no black-box dependencies |
+| [framer-motion](https://www.framer.com/motion/) | Animation library | Declarative, production-grade animations for page transitions, hover states, and staggered list entries |
+| [recharts](https://recharts.org) | SVG charting library | Area charts and radar charts for player history and attribute visualisation; integrates cleanly with React and Tailwind themes |
 | [vite](https://vitejs.dev) | Frontend dev server and production bundler | Near-instant dev server startup via native ES modules; significantly faster than webpack for the development loop |
 | [vitest](https://vitest.dev) | Test runner for both API and frontend | Shares Vite's config and module resolution, so tests run in the same environment as the app with no additional setup |
 | [@testing-library/react](https://testing-library.com) | React component testing | Encourages testing user-visible behavior rather than implementation details |

@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -222,9 +223,13 @@ describe("App", () => {
   });
 
   it("renders the dashboard shell", async () => {
-    render(<App />);
-    expect(await screen.findByText(/Track form, fixtures, and gameweeks/i)).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Saka", level: 2 })).toBeInTheDocument();
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("heading", { name: /Top Performers/i })).toBeInTheDocument();
+    expect(await screen.findByText("Saka")).toBeInTheDocument();
     expect(await screen.findByText("xGI")).toBeInTheDocument();
   });
 });
