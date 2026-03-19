@@ -66,6 +66,10 @@ function prettifyJson(raw: string): string {
   }
 }
 
+function getToolSql(input: Record<string, unknown>): string | null {
+  return typeof input.sql === "string" ? input.sql : null;
+}
+
 // ── Markdown components (dark theme) ─────────────────────────────────────────
 
 const markdownComponents: Components = {
@@ -147,11 +151,14 @@ function MessageBubble({ message }: { message: Message }) {
                 <div className="mt-2 pt-2 border-t border-white/10 space-y-3">
                   {toolCalls.map((tc) => (
                     <div key={tc.id} className="space-y-1.5">
-                      {tc.name === "query" && tc.input.sql && (
+                      {(() => {
+                        const sql = tc.name === "query" ? getToolSql(tc.input) : null;
+                        return sql ? (
                         <pre className="overflow-x-auto rounded bg-black/30 p-2 font-mono text-accent/90 whitespace-pre-wrap break-all text-[10px]">
-                          {String(tc.input.sql)}
+                          {sql}
                         </pre>
-                      )}
+                        ) : null;
+                      })()}
                       {tc.result ? (
                         <pre className="max-h-40 overflow-y-auto overflow-x-auto rounded bg-black/30 p-2 font-mono text-white/60 text-[10px] whitespace-pre-wrap break-all">
                           {prettifyJson(tc.result)}
