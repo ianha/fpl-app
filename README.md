@@ -138,11 +138,12 @@ Copy `.env.example` to `.env`. All variables have working defaults for local dev
 | `FPL_BASE_URL` | `https://fantasy.premierleague.com/api` | Base URL for the public FPL API |
 | `FPL_MIN_REQUEST_INTERVAL_MS` | `3000` | Minimum milliseconds between outbound FPL requests |
 | `ASSETS_DIR` | `./apps/api/data/assets` | Directory where downloaded/generated player and team JPEG files are stored |
-| `VITE_API_BASE_URL` | `http://localhost:4000/api` | API base URL used by the frontend at build time |
+| `VITE_API_BASE_URL` | unset | Optional override for the API base URL used by the frontend; when unset, the frontend uses the current site origin plus `/api` |
+| `VITE_ALLOWED_HOSTS` | unset | Optional comma-separated list of hostnames that the Vite dev server should allow, useful for tunnels or custom local domains |
 
 The API reads `.env` automatically via [dotenv](https://github.com/motdotla/dotenv). The frontend reads `VITE_*` variables at build/dev time via Vite's built-in env handling.
 
-**A note on `VITE_*` variables:** Vite treats any environment variable prefixed with `VITE_` specially — during the build (or dev server startup), it replaces every reference to `import.meta.env.VITE_API_BASE_URL` with the literal string value from your `.env` file. This means the value is baked into the JavaScript bundle, not read at runtime. If you change `VITE_API_BASE_URL` after the app is built, you need to rebuild. For local development this is transparent because the dev server restarts automatically.
+**A note on `VITE_*` variables:** Vite treats any environment variable prefixed with `VITE_` specially — during the build (or dev server startup), it replaces every reference to `import.meta.env.VITE_API_BASE_URL` with the literal string value from your `.env` file. If `VITE_API_BASE_URL` is unset, this app falls back to `window.location.origin + "/api"` in the browser, which lets the same frontend work both on `localhost` and through a tunnel as long as `/api` is routed to the API server. If you change `VITE_API_BASE_URL` after the app is built, you need to rebuild. For local development this is transparent because the dev server restarts automatically.
 
 ---
 

@@ -1,6 +1,18 @@
 import type { OverviewResponse, PlayerCard, PlayerDetail, FixtureCard, TeamSummary, GameweekSummary } from "@fpl/contracts";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+function resolveApiBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api`;
+  }
+
+  return "http://localhost:4000/api";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
 async function request<T>(path: string): Promise<T> {
