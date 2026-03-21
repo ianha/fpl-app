@@ -127,6 +127,80 @@ export class SyncService {
     return this.buildSnapshot([gameweekId, gameweekFixtures, gameweekPlayers]);
   }
 
+  async syncPlayer(playerId: number, gameweekId?: number, force = false) {
+    const runId = this.startRun();
+    this.logInfo(
+      `[run ${runId}] Starting targeted sync for player ${playerId}${gameweekId ? ` (gameweek ${gameweekId})` : ""}.`,
+    );
+
+    try {
+      this.logInfo(`[run ${runId}] Fetching bootstrap data from FPL.`);
+      const bootstrap = await this.client.getBootstrap();
+      this.syncBootstrap(bootstrap);
+      const assetResult = await this.assetSyncService.syncBootstrapAssets(bootstrap, force);
+      this.logInfo(
+        `[run ${runId}] Bootstrap synced: ${bootstrap.elements.length} players. Assets: ${assetResult.playersDownloaded + assetResult.teamsDownloaded} downloaded, ${assetResult.playersSkipped + assetResult.teamsSkipped} skipped.`,
+      );
+
+      this.logInfo(`[run ${runId}] Fetching fixtures from FPL.`);
+      const fixtures = await this.client.getFixtures();
+      this.syncFixtures(fixtures);
+      this.logInfo(`[run ${runId}] Fixtures synced: ${fixtures.length} rows.`);
+
+      const playerElement = bootstrap.elements.find((e) => e.id === playerId);
+      if (!playerElement) {
+        throw new Error(`Player ${playerId} not found in FPL bootstrap data.`);
+      }
+
+      const snapshotBase = this.buildSnapshot(["player", playerId, playerElement, gameweekId ?? null]);
+      const snapshot = force ? `${snapshotBase}:force:${now()}` : snapshotBase;
+
+      const stateKey = `player_snapshot:${playerId}`;
+      const currentSnapshot = this.getSyncState(stateKey);
+      const shouldSync = force || currentSnapshot !== snapshot;
+
+      let syncedPlayers = 0;
+      if (shouldSync) {
+        this.db
+          .prepare(
+            `INSERT INTO player_sync_status (player_id, bootstrap_updated_at, synced_at, last_error, requested_snapshot, completed_snapshot)
+             VALUES (?, ?, NULL, NULL, ?, NULL)
+             ON CONFLICT(player_id) DO UPDATE SET
+               requested_snapshot = excluded.requested_snapshot,
+               last_error = NULL`,
+          )
+          .run(playerId, now(), snapshot);
+        this.setSyncState(stateKey, snapshot);
+
+        if (gameweekId !== undefined) {
+          this.prepareGameweekRefresh(gameweekId, [playerId], snapshot, force);
+        }
+
+        await this.syncPlayerSummaries([playerId], runId, snapshot, gameweekId);
+        syncedPlayers = 1;
+      } else {
+        this.logInfo(`[run ${runId}] Player ${playerId} is up to date, skipping.`);
+      }
+
+      this.finishRun(runId, "success");
+      const scope = gameweekId ? `gameweek ${gameweekId}` : "full history";
+      this.logInfo(
+        `[run ${runId}] Player ${playerId} sync finished (${scope}). Refreshed ${syncedPlayers} player summaries.`,
+      );
+      return { runId, syncedPlayers, playerId, gameweekId };
+    } catch (error) {
+      this.finishRun(
+        runId,
+        "failed",
+        error instanceof Error ? error.message : String(error),
+      );
+      this.logError(
+        `[run ${runId}] Player ${playerId} sync failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
+  }
+
   async syncGameweek(gameweekId: number, force = false) {
     const runId = this.startRun();
     this.logInfo(`[run ${runId}] Starting targeted sync for gameweek ${gameweekId}.`);
@@ -613,8 +687,13 @@ export class SyncService {
       "DELETE FROM player_future_fixtures WHERE player_id = ?",
     );
     const insertHistory = this.db.prepare(
-      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, starts, opponent_team, value, was_home, kickoff_time, updated_at)
-       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @starts, @opponent_team, @value, @was_home, @kickoff_time, @updated_at)`,
+      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, starts, opponent_team, team_id, value, was_home, kickoff_time, updated_at)
+       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @starts, @opponent_team, @team_id, @value, @was_home, @kickoff_time, @updated_at)`,
+    );
+    const lookupFixture = this.db.prepare(
+      `SELECT team_h, team_a FROM fixtures
+       WHERE kickoff_time = ? AND (team_h = ? OR team_a = ?)
+       LIMIT 1`,
     );
     const insertFutureFixture = this.db.prepare(
       `INSERT INTO player_future_fixtures (player_id, fixture_id, code, event_id, kickoff_time, team_h, team_a, team_h_score, team_a_score, finished, started, updated_at)
@@ -638,6 +717,16 @@ export class SyncService {
        SET last_error = ?
        WHERE gameweek_id = ? AND player_id = ?`,
     );
+    const updatePlayerTeamId = this.db.prepare(
+      `UPDATE players
+       SET team_id = (
+         SELECT team_id FROM player_history
+         WHERE player_id = ? AND team_id IS NOT NULL
+         ORDER BY kickoff_time DESC
+         LIMIT 1
+       )
+       WHERE id = ?`,
+    );
 
     try {
       const tx = this.db.transaction(() => {
@@ -655,6 +744,14 @@ export class SyncService {
             history.assists,
             expectedAssists,
           );
+          const fixtureRow = lookupFixture.get(
+            history.kickoff_time,
+            history.opponent_team,
+            history.opponent_team,
+          ) as { team_h: number; team_a: number } | undefined;
+          const team_id = fixtureRow
+            ? history.was_home ? fixtureRow.team_h : fixtureRow.team_a
+            : null;
           insertHistory.run({
             player_id: playerId,
             round: history.round,
@@ -686,12 +783,15 @@ export class SyncService {
             defensive_contribution: history.defensive_contribution,
             starts: history.starts,
             opponent_team: history.opponent_team,
+            team_id,
             value: history.value,
             was_home: Number(history.was_home),
             kickoff_time: history.kickoff_time,
             updated_at: updatedAt,
           });
         }
+
+        updatePlayerTeamId.run(playerId, playerId);
 
         for (const fixture of summary.fixtures) {
           insertFutureFixture.run({

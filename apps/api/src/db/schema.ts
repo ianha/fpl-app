@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS player_history (
   defensive_contribution INTEGER NOT NULL DEFAULT 0,
   starts INTEGER NOT NULL DEFAULT 0,
   opponent_team INTEGER NOT NULL,
+  team_id INTEGER,
   value INTEGER NOT NULL,
   was_home INTEGER NOT NULL,
   kickoff_time TEXT NOT NULL,

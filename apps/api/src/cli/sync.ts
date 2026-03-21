@@ -25,6 +25,30 @@ function parseGameweekArg(argv: string[]) {
   return parsed;
 }
 
+function parsePlayerArg(argv: string[]) {
+  const idx = argv.findIndex((a) => a === "--player" || a === "-p");
+  if (idx >= 0) {
+    const value = argv[idx + 1];
+    const parsed = Number(value);
+    if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error("`--player` must be followed by a positive integer.");
+    }
+    return parsed;
+  }
+
+  const prefixed = argv.find((a) => a.startsWith("--player="));
+  if (!prefixed) {
+    return undefined;
+  }
+
+  const parsed = Number(prefixed.split("=")[1]);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error("`--player` must be a positive integer.");
+  }
+
+  return parsed;
+}
+
 function parseForceArg(argv: string[]) {
   return argv.includes("--force") || argv.includes("-f");
 }
@@ -41,17 +65,21 @@ const logger = {
 const service = new SyncService(db, undefined, logger);
 const argv = process.argv.slice(2);
 const gameweek = parseGameweekArg(argv);
+const playerId = parsePlayerArg(argv);
 const force = parseForceArg(argv);
 
-const syncPromise = gameweek
-  ? service.syncGameweek(gameweek, force)
-  : service.syncAll(force);
+const syncPromise = playerId
+  ? service.syncPlayer(playerId, gameweek, force)
+  : gameweek
+    ? service.syncGameweek(gameweek, force)
+    : service.syncAll(force);
 
 syncPromise
   .then((result) => {
-    const scope =
-      "gameweekId" in result
-        ? `gameweek ${result.gameweekId}`
+    const scope = playerId !== undefined
+      ? `player ${playerId}${gameweek ? ` / gameweek ${gameweek}` : ""}`
+      : gameweek !== undefined
+        ? `gameweek ${gameweek}`
         : "full dataset";
     console.log(`Sync completed for ${scope}${force ? " (forced)" : ""}. Run ${result.runId} refreshed ${result.syncedPlayers} player summaries.`);
   })

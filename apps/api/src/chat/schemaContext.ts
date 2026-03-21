@@ -38,6 +38,7 @@ const COLUMN_ANNOTATIONS: Readonly<Record<string, Record<string, string>>> = {
   player_history: {
     round:                                 "Gameweek number (1–38)",
     value:                                 "Player price at that GW, in tenths of £1m",
+    team_id:                               "The club the player was representing in this match (FK→teams); use for historical club affiliation (e.g. mid-season transfers). Nullable for rows synced before this column was added.",
     opponent_team:                         "References teams.id",
     was_home:                              "1 = player's team was at home, 0 = away",
     bps:                                   "BPS for that GW",
@@ -192,8 +193,9 @@ players(id INTEGER PK, code INTEGER, web_name TEXT, first_name TEXT, second_name
   expected_goal_performance REAL, expected_assist_performance REAL, expected_goal_involvement_performance REAL,
   expected_goals_conceded REAL, clean_sheets_per_90 REAL,
   tackles INTEGER, recoveries INTEGER, defensive_contribution INTEGER)
+  — team_id: reflects the player's most recently synced club; updated automatically from player_history on each sync. For historical club per match, use player_history.team_id instead.
 
-player_history(player_id→players, round INTEGER, opponent_team→teams, was_home INTEGER, kickoff_time TEXT,
+player_history(player_id→players, round INTEGER, opponent_team→teams, team_id→teams, was_home INTEGER, kickoff_time TEXT,
   total_points INTEGER, minutes INTEGER, goals_scored INTEGER, assists INTEGER, clean_sheets INTEGER,
   bonus INTEGER, bps INTEGER, creativity REAL, influence REAL, threat REAL, ict_index REAL,
   expected_goals REAL, expected_assists REAL, expected_goal_involvements REAL,
@@ -202,6 +204,7 @@ player_history(player_id→players, round INTEGER, opponent_team→teams, was_ho
   clearances_blocks_interceptions INTEGER, defensive_contribution INTEGER,
   starts INTEGER, value INTEGER)
   — PK: (player_id, round, opponent_team, kickoff_time)
+  — team_id: the club the player was representing in that match (nullable for rows synced before this column was added)
   — ⚠ Double gameweeks produce TWO rows per player for the same round; always SUM/AVG across rows when aggregating a GW
 
 fixtures(id INTEGER PK, event_id→gameweeks, team_h→teams, team_a→teams,
@@ -277,6 +280,7 @@ recoveries: total ball recoveries (INTEGER) — available on both players and pl
 clearances_blocks_interceptions: combined clearances + blocks + interceptions per game (INTEGER) — player_history only
 defensive_contribution: clearances + blocks + interceptions combined season total (INTEGER)
 player_history.round: gameweek number (1–38)
+player_history.team_id: the team the player was representing in that match (FK→teams); use this instead of players.team_id when querying historical club affiliations (e.g. mid-season transfers)
 player_history.was_home: 1 = player's team was the home side, 0 = away
 fixtures.finished: 1 = match is complete; team_h_score/team_a_score are NULL if unplayed
 my_team_picks.position: SQUAD SLOT number (1–15), not football position — 1–11 starters, 12–15 bench
@@ -321,10 +325,19 @@ ORDER BY round DESC;
 -- Use position_id on the players table, NOT my_team_picks.position
 SELECT web_name FROM players WHERE position_id = 4  -- FWDs only
 
+### Track which club a player represented each GW (mid-season transfers)
+-- player_history.team_id is set per match; players.team_id is only current club
+SELECT ph.round, t.short_name AS club, ph.total_points, ph.minutes
+FROM player_history ph
+JOIN teams t ON t.id = ph.team_id
+WHERE ph.player_id = ?
+ORDER BY ph.kickoff_time;
+
 ## Query pitfalls to avoid
 1. ⚠ my_team_picks.position is the squad SLOT (1–15), not football position — join to players.position_id for GKP/DEF/MID/FWD
 2. ⚠ player_history has multiple rows per round in double gameweeks — always GROUP BY round and SUM/AVG rather than selecting a single row
 3. ⚠ All costs are in tenths — display as cost/10.0 to get £m values
 4. ⚠ Boolean columns (is_current, finished, was_home, etc.) are INTEGER 0/1, not TRUE/FALSE
 5. ⚠ team_h_score and team_a_score are NULL for unplayed fixtures — use "WHERE finished = 1" when you need scores
-6. ⚠ gw_points on my_team_picks may be NULL if no sync has run yet — use COALESCE(gw_points, 0) when summing`;
+6. ⚠ gw_points on my_team_picks may be NULL if no sync has run yet — use COALESCE(gw_points, 0) when summing
+7. ⚠ players.team_id is the player's current club (updated each sync); for historical club affiliation use player_history.team_id, which records the actual club per match and correctly tracks mid-season transfers`;

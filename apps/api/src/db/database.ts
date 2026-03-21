@@ -73,6 +73,20 @@ function ensureColumns(
   }
 }
 
+function backfillPlayerHistoryTeamId(db: Database.Database) {
+  db.exec(`
+    UPDATE player_history
+    SET team_id = (
+      SELECT CASE WHEN player_history.was_home = 1 THEN f.team_h ELSE f.team_a END
+      FROM fixtures f
+      WHERE f.kickoff_time = player_history.kickoff_time
+        AND (f.team_h = player_history.opponent_team OR f.team_a = player_history.opponent_team)
+      LIMIT 1
+    )
+    WHERE team_id IS NULL
+  `);
+}
+
 function backfillDerivedPerformanceColumns(db: Database.Database) {
   db.exec(`
     UPDATE players
@@ -190,6 +204,7 @@ export function createDatabase(dbPath = env.dbPath) {
       sql: "defensive_contribution INTEGER NOT NULL DEFAULT 0",
     },
     { name: "starts", sql: "starts INTEGER NOT NULL DEFAULT 0" },
+    { name: "team_id", sql: "team_id INTEGER" },
   ]);
   ensureColumns(db, "player_sync_status", [
     { name: "requested_snapshot", sql: "requested_snapshot TEXT" },
@@ -213,6 +228,7 @@ export function createDatabase(dbPath = env.dbPath) {
   ensureColumns(db, "my_team_picks", [
     { name: "gw_points", sql: "gw_points INTEGER" },
   ]);
+  backfillPlayerHistoryTeamId(db);
   backfillDerivedPerformanceColumns(db);
   return db;
 }
