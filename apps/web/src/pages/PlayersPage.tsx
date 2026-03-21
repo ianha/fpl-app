@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Search, Users, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Search, Users, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type AsyncState<T> =
@@ -97,6 +97,14 @@ const GROUP_STARTS = new Set<string>(
   }, []),
 );
 
+const POSITION_CHIPS: { value: string; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "1",   label: "GKP" },
+  { value: "2",   label: "DEF" },
+  { value: "3",   label: "MID" },
+  { value: "4",   label: "FWD" },
+];
+
 function getColValue(player: PlayerCard, col: ColDef): number | string {
   if (col.compute) return col.compute(player);
   return (player as any)[col.key] ?? 0;
@@ -172,6 +180,17 @@ export function PlayersPage() {
   const [sortDir, setSortDir] = useState<SortDir>(() => (searchParams.get("dir") ?? getSavedParam("dir", "desc")) as SortDir);
   const [fromGW, setFromGW] = useState<string>(() => searchParams.get("fromGW") ?? getSavedParam("fromGW"));
   const [toGW, setToGW] = useState<string>(() => searchParams.get("toGW") ?? getSavedParam("toGW"));
+
+  // Auto-expand on return if any advanced filter was previously active
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(() => {
+    const savedTeam    = getSavedParam("team", "all");
+    const savedStatus  = getSavedParam("status", "all");
+    const savedMinP    = getSavedParam("minPrice");
+    const savedMaxP    = getSavedParam("maxPrice");
+    const savedMinMins = getSavedParam("minMin");
+    return [savedTeam !== "all", savedStatus !== "all", !!savedMinP, !!savedMaxP, !!savedMinMins].some(Boolean);
+  });
+
   const currentParamsKey = getPlayersParamsKey(search, position, team, fromGW, toGW);
 
   const [state, setState] = useState<AsyncState<PlayerCard[]>>(() => {
@@ -265,7 +284,16 @@ export function PlayersPage() {
     const defaultTo = gameweeks.find((g) => g.isCurrent) ?? gameweeks.filter((g) => g.isFinished).at(-1);
     if (defaultTo) setToGW(String(defaultTo.id));
     if (gameweeks.length > 0) setFromGW(String(gameweeks[0].id));
+    setShowAdvancedFilters(false);
   }, [gameweeks]);
+
+  // Count of active advanced filters (shown as badge on mobile toggle button)
+  const activeFilterCount = useMemo(
+    () =>
+      [team !== "all", statusFilter !== "all", !!minPrice, !!maxPrice, !!minMinutes]
+        .filter(Boolean).length,
+    [team, statusFilter, minPrice, maxPrice, minMinutes],
+  );
 
   useEffect(() => {
     const p = new URLSearchParams();
@@ -364,92 +392,149 @@ export function PlayersPage() {
         <p className="text-sm text-muted-foreground">Browse and filter all FPL players</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-44 flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Search players…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className={cn("h-9 pl-9", search && "pr-9")}
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                searchInputRef.current?.focus();
-              }}
-              aria-label="Clear player search"
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <Select value={position} onValueChange={setPosition}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Position" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Positions</SelectItem>
-            <SelectItem value="1">Goalkeeper</SelectItem>
-            <SelectItem value="2">Defender</SelectItem>
-            <SelectItem value="3">Midfielder</SelectItem>
-            <SelectItem value="4">Forward</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={team} onValueChange={setTeam}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Team" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Teams</SelectItem>
-            {teams.map((t) => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="a">Available</SelectItem>
-            <SelectItem value="d">Doubtful</SelectItem>
-            <SelectItem value="i">Injured</SelectItem>
-            <SelectItem value="s">Suspended</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex items-center gap-1">
-          <Input type="number" placeholder="Min £" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="w-20 h-9 text-sm" step="0.1" min="0" />
-          <span className="text-muted-foreground text-xs">–</span>
-          <Input type="number" placeholder="Max £" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="w-20 h-9 text-sm" step="0.1" min="0" />
-        </div>
-        <Input type="number" placeholder="Min mins" value={minMinutes} onChange={(e) => setMinMinutes(e.target.value)} className="w-24 h-9 text-sm" min="0" />
+      {/* ── Filter bar ──────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-white/8 bg-white/[0.03] p-2.5 space-y-1.5">
 
-        {/* GW range — shown once gameweeks have loaded */}
-        {gameweeks.length > 0 && (
-          <div className="flex items-center gap-1">
-            <Select value={fromGW} onValueChange={setFromGW}>
-              <SelectTrigger className="w-24 h-9">
-                <SelectValue placeholder="From GW" />
-              </SelectTrigger>
-              <SelectContent>
-                {gameweeks.map((gw) => (
-                  <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-muted-foreground text-xs">→</span>
-            <Select value={toGW} onValueChange={setToGW}>
-              <SelectTrigger className="w-24 h-9">
-                <SelectValue placeholder="To GW" />
-              </SelectTrigger>
-              <SelectContent>
-                {gameweeks.map((gw) => (
-                  <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Row 1: Search + mobile filter toggle */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              ref={searchInputRef}
+              placeholder="Search players…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={cn("h-7 pl-8 text-xs", search && "pr-8")}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); searchInputRef.current?.focus(); }}
+                aria-label="Clear player search"
+                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
-        )}
+
+          {/* Mobile-only toggle — reveals advanced filters */}
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters((v) => !v)}
+            className={cn(
+              "sm:hidden shrink-0 flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-all",
+              showAdvancedFilters || activeFilterCount > 0
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-white/8 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white",
+            )}
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Row 2: Position chips — always visible */}
+        <div className="flex flex-wrap items-center gap-1">
+          {POSITION_CHIPS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setPosition(value)}
+              className={cn(
+                "h-7 px-2.5 rounded-lg border text-xs font-medium transition-all",
+                position === value
+                  ? "border-primary/40 bg-primary/15 text-primary"
+                  : "border-white/8 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Row 3: Advanced filters — collapsible on mobile, always shown on sm+ */}
+        <div
+          className={cn(
+            "grid transition-[grid-template-rows] duration-200 ease-in-out",
+            showAdvancedFilters ? "grid-rows-[1fr]" : "grid-rows-[0fr] sm:grid-rows-[1fr]",
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+
+              <Select value={team} onValueChange={setTeam}>
+                <SelectTrigger className="h-7 w-32 px-2.5 text-xs">
+                  <SelectValue placeholder="Team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Teams</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-7 w-28 px-2.5 text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="a">Available</SelectItem>
+                  <SelectItem value="d">Doubtful</SelectItem>
+                  <SelectItem value="i">Injured</SelectItem>
+                  <SelectItem value="s">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-1">
+                <Input type="number" placeholder="Min £" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} className="h-7 w-16 px-2.5 text-xs" step="0.1" min="0" />
+                <span className="text-[10px] text-muted-foreground">–</span>
+                <Input type="number" placeholder="Max £" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} className="h-7 w-16 px-2.5 text-xs" step="0.1" min="0" />
+              </div>
+
+              <Input type="number" placeholder="Min mins" value={minMinutes} onChange={(e) => setMinMinutes(e.target.value)} className="h-7 w-20 text-xs" min="0" />
+
+              {/* GW range — shown once gameweeks have loaded */}
+              {gameweeks.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <Select value={fromGW} onValueChange={setFromGW}>
+                    <SelectTrigger className="h-7 w-20 px-2.5 text-xs">
+                      <SelectValue placeholder="From GW" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gameweeks.map((gw) => (
+                        <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[10px] text-muted-foreground">→</span>
+                  <Select value={toGW} onValueChange={setToGW}>
+                    <SelectTrigger className="h-7 w-20 px-2.5 text-xs">
+                      <SelectValue placeholder="To GW" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gameweeks.map((gw) => (
+                        <SelectItem key={gw.id} value={String(gw.id)}>GW{gw.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+
       </div>
 
+      {/* ── Action row: count (left) + Reset / Refresh (right) ──────── */}
       <div className="flex items-center justify-between -mt-1">
         {state.status === "ready" ? (
           <p className="text-xs text-muted-foreground">
@@ -468,7 +553,7 @@ export function PlayersPage() {
             className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             <RotateCcw className="h-3 w-3" />
-            Reset filters
+            Reset
           </Button>
           <Button
             variant="ghost"

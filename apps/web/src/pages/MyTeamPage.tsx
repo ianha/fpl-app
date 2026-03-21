@@ -645,7 +645,7 @@ export function MyTeamPage() {
                   value={String(viewGameweek ?? "")}
                   onValueChange={(val) => selectViewGameweek(Number(val), selectedAccount.id, payload.currentGameweek ?? 0)}
                 >
-                  <SelectTrigger className="min-h-9 border-white/10 bg-white/5 text-sm">
+                  <SelectTrigger className="h-7 border-white/10 bg-white/5 px-2.5 text-xs">
                     <SelectValue placeholder="Select gameweek" />
                   </SelectTrigger>
                   <SelectContent>

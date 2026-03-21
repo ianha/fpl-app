@@ -163,7 +163,7 @@ export function FixturesPage() {
           <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <button
               onClick={() => setSelectedTeam(null)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                 selectedTeam === null
                   ? "bg-accent text-black shadow-lg shadow-accent/25"
                   : "bg-white/8 text-white/60 hover:bg-white/15 hover:text-white"
@@ -175,7 +175,7 @@ export function FixturesPage() {
               <button
                 key={team.id}
                 onClick={() => setSelectedTeam(selectedTeam === team.id ? null : team.id)}
-                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                className={`shrink-0 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                   selectedTeam === team.id
                     ? "bg-primary text-white shadow-lg shadow-primary/25"
                     : "bg-white/8 text-white/60 hover:bg-white/15 hover:text-white"
