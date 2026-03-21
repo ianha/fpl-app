@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { PlayerCard, TeamSummary } from "@fpl/contracts";
 import { getPlayers, getTeams, getGameweeks, resolveAssetUrl } from "@/api/client";
@@ -154,6 +154,12 @@ export function PlayersPage() {
   const [gameweeks, setGameweeks] = useState<GameweekSummary[]>([]);
   const [fromGW, setFromGW] = useState<string>(searchParams.get("fromGW") ?? "");
   const [toGW, setToGW] = useState<string>(searchParams.get("toGW") ?? "");
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [tableScrolled, setTableScrolled] = useState(false);
+  const handleTableScroll = useCallback(() => {
+    setTableScrolled((tableContainerRef.current?.scrollLeft ?? 0) > 12);
+  }, []);
 
   useEffect(() => {
     getTeams().then(setTeams).catch(() => {});
@@ -340,11 +346,19 @@ export function PlayersPage() {
       )}
 
       {state.status === "ready" && (
-        <div className="overflow-x-auto rounded-xl border border-white/6">
+        <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto rounded-xl border border-white/6">
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-white/8 bg-secondary/40">
-                <th className="sticky left-0 z-10 bg-secondary/60 backdrop-blur-sm px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted-foreground font-medium min-w-52">
+                <th
+                  className="sticky left-0 z-10 bg-secondary/60 backdrop-blur-sm text-left text-[10px] uppercase tracking-wider text-muted-foreground font-medium overflow-hidden"
+                  style={{
+                    minWidth: tableScrolled ? '120px' : '208px',
+                    width: tableScrolled ? '120px' : '208px',
+                    padding: tableScrolled ? '10px 12px' : '10px 16px',
+                    transition: 'min-width 320ms cubic-bezier(0.4,0,0.2,1), width 320ms cubic-bezier(0.4,0,0.2,1), padding 280ms ease',
+                  }}
+                >
                   Player
                 </th>
                 {COLUMNS.map((col) => (
@@ -381,7 +395,15 @@ export function PlayersPage() {
                         idx % 2 === 0 ? "bg-transparent" : "bg-white/[0.025]",
                       )}
                     >
-                      <td className="sticky left-0 z-10 px-4 py-2 bg-[hsl(267,70%,5%)] group-hover:bg-[hsl(267,70%,9%)] transition-colors">
+                      <td
+                        className="sticky left-0 z-10 overflow-hidden bg-[hsl(267,70%,5%)] group-hover:bg-[hsl(267,70%,9%)]"
+                        style={{
+                          minWidth: tableScrolled ? '120px' : '208px',
+                          width: tableScrolled ? '120px' : '208px',
+                          padding: tableScrolled ? '8px 12px' : '8px 16px',
+                          transition: 'min-width 320ms cubic-bezier(0.4,0,0.2,1), width 320ms cubic-bezier(0.4,0,0.2,1), padding 280ms ease, background-color 150ms cubic-bezier(0.4,0,0.2,1)',
+                        }}
+                      >
                         <div className="flex items-center gap-2.5">
                           {img ? (
                             <img src={img} alt={player.webName} className="h-8 w-8 rounded-md object-cover border border-white/10 bg-secondary shrink-0" />
@@ -390,19 +412,56 @@ export function PlayersPage() {
                               <Users className="h-3 w-3 text-muted-foreground" />
                             </div>
                           )}
-                          <div className="min-w-0">
+                          <div className="min-w-0 overflow-hidden">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-white text-xs truncate max-w-28">{player.webName}</span>
-                              {pos && (
-                                <span className={cn("shrink-0 inline-flex items-center rounded-full border px-1 py-0 text-[9px] font-bold uppercase", pos.color)}>
-                                  {pos.short}
-                                </span>
-                              )}
-                              <StatusDot status={player.status} />
+                              {/* Name — shrinks to ~2/3 on scroll */}
+                              <span
+                                className="font-semibold text-white text-xs truncate"
+                                style={{
+                                  maxWidth: tableScrolled ? '72px' : '112px',
+                                  transition: 'max-width 320ms cubic-bezier(0.4,0,0.2,1)',
+                                }}
+                              >
+                                {player.webName}
+                              </span>
+                              {/* Position badge — collapses */}
+                              <span style={{
+                                display: 'inline-flex',
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                                width: tableScrolled ? '0px' : '34px',
+                                opacity: tableScrolled ? 0 : 1,
+                                transition: 'width 320ms cubic-bezier(0.4,0,0.2,1), opacity 240ms ease',
+                              }}>
+                                {pos && (
+                                  <span className={cn("inline-flex items-center rounded-full border px-1 py-0 text-[9px] font-bold uppercase whitespace-nowrap", pos.color)}>
+                                    {pos.short}
+                                  </span>
+                                )}
+                              </span>
+                              {/* Status dot — collapses */}
+                              <span style={{
+                                display: 'inline-flex',
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                                width: tableScrolled ? '0px' : '10px',
+                                opacity: tableScrolled ? 0 : 1,
+                                transition: 'width 320ms cubic-bezier(0.4,0,0.2,1), opacity 240ms ease',
+                              }}>
+                                <StatusDot status={player.status} />
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1">
+                            {/* Team row — collapses */}
+                            <div
+                              className="flex items-center gap-1 overflow-hidden"
+                              style={{
+                                maxHeight: tableScrolled ? '0px' : '20px',
+                                opacity: tableScrolled ? 0 : 1,
+                                transition: 'max-height 320ms cubic-bezier(0.4,0,0.2,1), opacity 240ms ease',
+                              }}
+                            >
                               {teamImg && <img src={teamImg} alt={player.teamShortName} className="h-3.5 w-3.5 object-contain shrink-0" />}
-                              <p className="text-[10px] text-muted-foreground truncate max-w-28">{player.teamShortName}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{player.teamShortName}</p>
                             </div>
                           </div>
                         </div>
