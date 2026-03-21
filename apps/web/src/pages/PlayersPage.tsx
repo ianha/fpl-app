@@ -120,6 +120,11 @@ function getPlayersParamsKey(q: string, pos: string, tm: string, fgw: string, tg
   return [q || "", pos, tm, fgw, tgw].join("|");
 }
 
+function shouldAutofocusInput(): boolean {
+  if (typeof window === "undefined") return false;
+  return !window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+}
+
 function ColHeader({
   col, sortCol, sortDir, onSort,
   className,
@@ -342,6 +347,7 @@ export function PlayersPage() {
   }, [visibleCount, players.length, state.status]);
 
   useEffect(() => {
+    if (!shouldAutofocusInput()) return;
     const frame = requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });

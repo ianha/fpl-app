@@ -57,6 +57,11 @@ type ChatEvent =
 const MESSAGES_KEY = "fpl-chat-messages";
 const PROVIDER_KEY = "fpl-chat-provider";
 
+function shouldAutofocusInput(): boolean {
+  if (typeof window === "undefined") return false;
+  return !window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+}
+
 function loadMessages(): Message[] {
   try {
     const raw = localStorage.getItem(MESSAGES_KEY);
@@ -279,6 +284,7 @@ export function ChatPage() {
   }, [input]);
 
   useEffect(() => {
+    if (!shouldAutofocusInput()) return;
     if (needsOAuth || providers.length === 0 || streaming) return;
     const frame = requestAnimationFrame(() => {
       textareaRef.current?.focus();
