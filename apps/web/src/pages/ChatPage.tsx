@@ -448,7 +448,7 @@ export function ChatPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-[calc(100vh-0px)] lg:h-screen bg-background">
+    <div className="flex flex-col h-[calc(100svh-3.5rem)] lg:h-svh bg-background">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 bg-black/20 backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-2.5">
@@ -493,7 +493,7 @@ export function ChatPage() {
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
