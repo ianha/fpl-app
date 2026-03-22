@@ -116,7 +116,7 @@ export function PlayerDetailPage() {
   const posLabel = POSITIONS[player.positionId] ?? "Player";
 
   // History chart data
-  const chartData = history.map((h) => ({
+  const chartData = [...history].reverse().map((h) => ({
     gw: h.round,
     Points: h.totalPoints,
     Minutes: Math.round(h.minutes / 10), // scaled
@@ -325,7 +325,7 @@ export function PlayerDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.slice(-8).reverse().map((h, i) => (
+                  {history.slice(0, 8).map((h, i) => (
                     <tr
                       key={i}
                       className="border-b border-white/4 transition-colors hover:bg-white/3 last:border-0"

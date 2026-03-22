@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
-import { ArrowRightLeft, Coins, Crown, ShieldAlert, Sparkles, Trophy, Zap } from "lucide-react";
-import type { MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick } from "@fpl/contracts";
-import { getMyTeam, getMyTeamGameweekPicks, linkMyTeamAccount, resolveAssetUrl, syncMyTeam } from "@/api/client";
+import { ArrowRightLeft, Coins, Crown, ExternalLink, ShieldAlert, Sparkles, Trophy, Zap } from "lucide-react";
+import type { MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerDetail } from "@fpl/contracts";
+import { getMyTeam, getMyTeamGameweekPicks, getPlayer, linkMyTeamAccount, resolveAssetUrl, syncMyTeam } from "@/api/client";
 import { BGPattern, GlowCard } from "@/components/ui/glow-card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatCost } from "@/lib/format";
+import { computePointBreakdown } from "@/lib/points";
 import { type SquadEntry } from "@/lib/my-team";
 
 type AsyncState =
@@ -66,11 +68,13 @@ type MyTeamCache = {
 };
 const _myTeamCache = new Map<string, MyTeamCache>();
 const _myTeamHistoricalCache = new Map<string, MyTeamGameweekPicksResponse>();
+const _playerDetailCache = new Map<number, PlayerDetail>();
 let _myTeamSavedParams = "";
 
 export function resetMyTeamPageCacheForTests() {
   _myTeamCache.clear();
   _myTeamHistoricalCache.clear();
+  _playerDetailCache.clear();
   _myTeamSavedParams = "";
 }
 
@@ -93,17 +97,23 @@ function getHistoricalCacheKey(accountId: number, gameweek: number): string {
   return `${accountId}|${gameweek}`;
 }
 
-function PitchPlayerCard({ entry, gwPoints }: { entry: SquadEntry; gwPoints?: number }) {
+function PitchPlayerCard({ entry, gwPoints, onClick }: { entry: SquadEntry; gwPoints?: number; onClick?: () => void }) {
   const image = resolveAssetUrl(entry.player.imagePath);
+  const interactive = !!onClick;
 
   return (
     <div
-      role="group"
+      role={interactive ? "button" : "group"}
+      tabIndex={interactive ? 0 : undefined}
       aria-label={entry.player.webName}
+      onClick={onClick}
+      onKeyDown={interactive ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } } : undefined}
       className={cn(
         "group flex w-full flex-col items-center rounded-2xl border p-3 text-center transition-all duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        "cursor-default border-white/10 bg-[rgba(17,6,39,0.7)]",
+        interactive
+          ? "cursor-pointer border-white/10 bg-[rgba(17,6,39,0.7)] hover:border-white/20 hover:bg-[rgba(17,6,39,0.85)]"
+          : "cursor-default border-white/10 bg-[rgba(17,6,39,0.7)]",
       )}
     >
       <div className="relative mb-2">
@@ -252,6 +262,30 @@ export function MyTeamPage() {
     },
   );
   const [historicalLoading, setHistoricalLoading] = useState(false);
+  const [selectedPick, setSelectedPick] = useState<{ pick: MyTeamPick; gwPoints: number } | null>(null);
+  const [playerDetail, setPlayerDetail] = useState<PlayerDetail | null>(null);
+  const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedPick) {
+      setPlayerDetail(null);
+      return;
+    }
+    const playerId = selectedPick.pick.player.id;
+    const cached = _playerDetailCache.get(playerId);
+    if (cached) {
+      setPlayerDetail(cached);
+      return;
+    }
+    setPlayerDetailLoading(true);
+    getPlayer(playerId)
+      .then((data) => {
+        _playerDetailCache.set(playerId, data);
+        setPlayerDetail(data);
+      })
+      .catch(() => {})
+      .finally(() => setPlayerDetailLoading(false));
+  }, [selectedPick]);
 
   function applyCachedPage(cache: MyTeamCache) {
     setState(cache.state);
@@ -667,6 +701,15 @@ export function MyTeamPage() {
                 const gwPointsMap = Object.fromEntries(
                   (historicalData?.picks ?? []).map((p) => [p.slotId, p.gwPoints ?? 0]),
                 );
+                const pickBySlotId = Object.fromEntries(
+                  (historicalData?.picks ?? []).map((p) => [p.slotId, p]),
+                );
+                const handleCardClick = (slotId: string) => {
+                  const pick = pickBySlotId[slotId];
+                  if (pick && gwPointsMap[slotId] !== undefined) {
+                    setSelectedPick({ pick, gwPoints: gwPointsMap[slotId] });
+                  }
+                };
 
                 const displayStarters = displayPicks.filter((e) => e.role === "starter");
                 const displayBench = displayPicks.filter((e) => e.role === "bench");
@@ -696,7 +739,8 @@ export function MyTeamPage() {
                                 <PitchPlayerCard
                                   key={entry.slotId}
                                   entry={entry}
-                                  gwPoints={gwPointsMap[entry.slotId]}
+                                  gwPoints={gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] * Math.max(pickBySlotId[entry.slotId]?.multiplier ?? 1, 1) : undefined}
+                                  onClick={gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
                                 />
                               ))}
                             </div>
@@ -710,7 +754,8 @@ export function MyTeamPage() {
                               <PitchPlayerCard
                                 key={entry.slotId}
                                 entry={entry}
-                                gwPoints={isHistorical ? gwPointsMap[entry.slotId] : undefined}
+                                gwPoints={isHistorical && gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] : undefined}
+                                onClick={isHistorical && gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
                               />
                             ))}
                           </div>
@@ -891,6 +936,142 @@ export function MyTeamPage() {
 
       </div>
     </motion.div>
+
+    {/* ── PLAYER DETAIL MODAL ──────────────────────────────────── */}
+    <Dialog open={!!selectedPick} onOpenChange={(open) => { if (!open) setSelectedPick(null); }}>
+      <DialogContent>
+        {selectedPick && (() => {
+          const { pick, gwPoints } = selectedPick;
+          const player = pick.player;
+          const image = resolveAssetUrl(player.imagePath);
+          const posConfig = POSITION_CONFIG[player.positionId];
+          const multiplier = pick.multiplier;
+          const displayPoints = gwPoints * multiplier;
+
+          // Find matching history entry for this GW
+          const gwHistory = playerDetail?.history.find(
+            (h) => h.round === viewGameweek && h.totalPoints === gwPoints,
+          ) ?? playerDetail?.history.find((h) => h.round === viewGameweek);
+          const breakdown = gwHistory ? computePointBreakdown(gwHistory, player.positionId) : [];
+          const breakdownTotal = breakdown.reduce((sum, item) => sum + item.points, 0);
+
+          return (
+            <div className="space-y-4">
+              {/* Header */}
+              <DialogHeader>
+                <div className="flex items-center gap-3 pr-6">
+                  {image ? (
+                    <img src={image} alt={player.webName} className="h-14 w-14 rounded-xl object-cover ring-1 ring-white/15" />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+                      <ShieldAlert className="h-5 w-5 text-white/40" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="truncate text-lg">{player.webName}</DialogTitle>
+                    <div className="mt-0.5 flex items-center gap-1.5">
+                      <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold", posConfig?.color)}>
+                        {posConfig?.label}
+                      </span>
+                      <span className="text-xs text-white/45">{player.teamShortName}</span>
+                      {pick.isCaptain && (
+                        <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[9px] font-bold text-accent">Captain</span>
+                      )}
+                      {!pick.isCaptain && pick.isViceCaptain && (
+                        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/60">Vice</span>
+                      )}
+                      {pick.role === "bench" && (
+                        <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold text-white/60">Bench</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={cn(
+                      "font-display text-2xl font-bold tabular-nums",
+                      displayPoints > 0 ? "text-white" : displayPoints < 0 ? "text-red-400" : "text-white/25",
+                    )}>
+                      {displayPoints}
+                    </div>
+                    <div className="text-[10px] text-white/40">pts</div>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              {/* Point breakdown table */}
+              {playerDetailLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                </div>
+              ) : gwHistory ? (
+                <div className="rounded-xl border border-white/8 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/8 bg-white/[0.03]">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-white/40">Stat</th>
+                        <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-white/40">Value</th>
+                        <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-white/40">Pts</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {breakdown.map((item) => (
+                        <tr key={item.label} className="border-b border-white/5">
+                          <td className="px-3 py-1.5 text-xs text-white/70">{item.label}</td>
+                          <td className="px-3 py-1.5 text-right text-xs tabular-nums text-white/50">{item.stat}</td>
+                          <td className={cn(
+                            "px-3 py-1.5 text-right text-xs font-semibold tabular-nums",
+                            item.points > 0 ? "text-accent" : item.points < 0 ? "text-red-400" : "text-white/30",
+                          )}>{item.points}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-white/10 bg-white/[0.03]">
+                        <td className="px-3 py-2 text-xs font-semibold text-white/80">Total</td>
+                        <td />
+                        <td className="px-3 py-2 text-right text-xs font-bold tabular-nums text-white">
+                          {breakdownTotal}
+                          {multiplier > 1 && (
+                            <span className="ml-1 text-[10px] font-normal text-white/40">
+                              ({breakdownTotal} × {multiplier})
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : null}
+
+              {/* Expected stats */}
+              {gwHistory && (
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "xG", value: gwHistory.expectedGoals },
+                    { label: "xA", value: gwHistory.expectedAssists },
+                    { label: "xGI", value: gwHistory.expectedGoalInvolvements },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2 text-center">
+                      <div className="text-[10px] font-medium uppercase tracking-wider text-white/35">{stat.label}</div>
+                      <div className="mt-0.5 font-display text-sm font-bold tabular-nums">{stat.value.toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* View full profile link */}
+              <Link
+                to={`/players/${player.id}`}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                onClick={() => setSelectedPick(null)}
+              >
+                View full profile <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+          );
+        })()}
+      </DialogContent>
+    </Dialog>
+
     </MotionConfig>
   );
 }

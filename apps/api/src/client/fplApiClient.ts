@@ -98,6 +98,13 @@ type ElementSummaryResponse = {
     recoveries: number;
     clearances_blocks_interceptions: number;
     defensive_contribution: number;
+    saves: number;
+    yellow_cards: number;
+    red_cards: number;
+    own_goals: number;
+    penalties_saved: number;
+    penalties_missed: number;
+    goals_conceded: number;
     starts: number;
     opponent_team: number;
     value: number;

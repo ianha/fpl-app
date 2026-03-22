@@ -252,16 +252,18 @@ export class QueryService {
                 expected_goal_performance AS expectedGoalPerformance,
                 expected_assist_performance AS expectedAssistPerformance,
                 expected_goal_involvement_performance AS expectedGoalInvolvementPerformance,
-                expected_goals_conceded AS expectedGoalsConceded, tackles,
-                recoveries,
+                expected_goals_conceded AS expectedGoalsConceded,
+                saves, yellow_cards AS yellowCards, red_cards AS redCards,
+                own_goals AS ownGoals, penalties_saved AS penaltiesSaved,
+                penalties_missed AS penaltiesMissed, goals_conceded AS goalsConceded,
+                tackles, recoveries,
                 clearances_blocks_interceptions AS clearancesBlocksInterceptions,
                 defensive_contribution AS defensiveContribution, starts,
                 opponent_team AS opponentTeam, value, was_home AS wasHome,
                 kickoff_time AS kickoffTime
          FROM player_history
          WHERE player_id = ?
-         ORDER BY round DESC
-         LIMIT 8`,
+         ORDER BY round DESC`,
       )
       .all(playerId)
       .map((row: any) => ({

@@ -95,6 +95,13 @@ export type PlayerHistoryPoint = {
   expectedAssistPerformance: number;
   expectedGoalInvolvementPerformance: number;
   expectedGoalsConceded: number;
+  saves: number;
+  yellowCards: number;
+  redCards: number;
+  ownGoals: number;
+  penaltiesSaved: number;
+  penaltiesMissed: number;
+  goalsConceded: number;
   tackles: number;
   recoveries: number;
   clearancesBlocksInterceptions: number;

@@ -203,6 +203,13 @@ export function createDatabase(dbPath = env.dbPath) {
       name: "defensive_contribution",
       sql: "defensive_contribution INTEGER NOT NULL DEFAULT 0",
     },
+    { name: "saves", sql: "saves INTEGER NOT NULL DEFAULT 0" },
+    { name: "yellow_cards", sql: "yellow_cards INTEGER NOT NULL DEFAULT 0" },
+    { name: "red_cards", sql: "red_cards INTEGER NOT NULL DEFAULT 0" },
+    { name: "own_goals", sql: "own_goals INTEGER NOT NULL DEFAULT 0" },
+    { name: "penalties_saved", sql: "penalties_saved INTEGER NOT NULL DEFAULT 0" },
+    { name: "penalties_missed", sql: "penalties_missed INTEGER NOT NULL DEFAULT 0" },
+    { name: "goals_conceded", sql: "goals_conceded INTEGER NOT NULL DEFAULT 0" },
     { name: "starts", sql: "starts INTEGER NOT NULL DEFAULT 0" },
     { name: "team_id", sql: "team_id INTEGER" },
   ]);

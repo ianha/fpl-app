@@ -54,6 +54,13 @@ const COLUMN_ANNOTATIONS: Readonly<Record<string, Record<string, string>>> = {
     expected_goal_involvement_performance: "xGIP for that GW",
     expected_goals_conceded:               "xGC for that GW",
     defensive_contribution:                "clearances + blocks + interceptions for that GW",
+    saves:                                 "Saves made (mainly relevant for GKP)",
+    yellow_cards:                          "Yellow cards received (−1 pt each)",
+    red_cards:                             "Red cards received (−3 pts each)",
+    own_goals:                             "Own goals scored (−2 pts each)",
+    penalties_saved:                       "Penalties saved (+5 pts each, GKP only)",
+    penalties_missed:                      "Penalties missed (−2 pts each)",
+    goals_conceded:                        "Goals conceded (GKP/DEF: −1 pt per 2 conceded)",
   },
   fixtures: {
     event_id:      "References gameweeks.id",
@@ -202,6 +209,8 @@ player_history(player_id→players, round INTEGER, opponent_team→teams, team_i
   expected_goal_performance REAL, expected_assist_performance REAL, expected_goal_involvement_performance REAL,
   expected_goals_conceded REAL, tackles INTEGER, recoveries INTEGER,
   clearances_blocks_interceptions INTEGER, defensive_contribution INTEGER,
+  saves INTEGER, yellow_cards INTEGER, red_cards INTEGER, own_goals INTEGER,
+  penalties_saved INTEGER, penalties_missed INTEGER, goals_conceded INTEGER,
   starts INTEGER, value INTEGER)
   — PK: (player_id, round, opponent_team, kickoff_time)
   — team_id: the club the player was representing in that match (nullable for rows synced before this column was added)
@@ -279,6 +288,13 @@ tackles: total tackles made this season (INTEGER) — available on both players 
 recoveries: total ball recoveries (INTEGER) — available on both players and player_history
 clearances_blocks_interceptions: combined clearances + blocks + interceptions per game (INTEGER) — player_history only
 defensive_contribution: clearances + blocks + interceptions combined season total (INTEGER)
+saves: saves made in that GW (INTEGER) — mainly relevant for GKP
+yellow_cards: yellow cards received (INTEGER) — −1 FPL pt each
+red_cards: red cards received (INTEGER) — −3 FPL pts each
+own_goals: own goals scored (INTEGER) — −2 FPL pts each
+penalties_saved: penalties saved (INTEGER) — +5 FPL pts each (GKP)
+penalties_missed: penalties missed (INTEGER) — −2 FPL pts each
+goals_conceded: goals conceded (INTEGER) — GKP/DEF lose 1 pt per 2 conceded
 player_history.round: gameweek number (1–38)
 player_history.team_id: the team the player was representing in that match (FK→teams); use this instead of players.team_id when querying historical club affiliations (e.g. mid-season transfers)
 player_history.was_home: 1 = player's team was the home side, 0 = away

@@ -687,8 +687,8 @@ export class SyncService {
       "DELETE FROM player_future_fixtures WHERE player_id = ?",
     );
     const insertHistory = this.db.prepare(
-      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, starts, opponent_team, team_id, value, was_home, kickoff_time, updated_at)
-       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @starts, @opponent_team, @team_id, @value, @was_home, @kickoff_time, @updated_at)`,
+      `INSERT INTO player_history (player_id, round, total_points, minutes, goals_scored, assists, clean_sheets, bonus, bps, creativity, influence, threat, ict_index, expected_goals, expected_assists, expected_goal_involvements, expected_goal_performance, expected_assist_performance, expected_goal_involvement_performance, expected_goals_conceded, tackles, recoveries, clearances_blocks_interceptions, defensive_contribution, saves, yellow_cards, red_cards, own_goals, penalties_saved, penalties_missed, goals_conceded, starts, opponent_team, team_id, value, was_home, kickoff_time, updated_at)
+       VALUES (@player_id, @round, @total_points, @minutes, @goals_scored, @assists, @clean_sheets, @bonus, @bps, @creativity, @influence, @threat, @ict_index, @expected_goals, @expected_assists, @expected_goal_involvements, @expected_goal_performance, @expected_assist_performance, @expected_goal_involvement_performance, @expected_goals_conceded, @tackles, @recoveries, @clearances_blocks_interceptions, @defensive_contribution, @saves, @yellow_cards, @red_cards, @own_goals, @penalties_saved, @penalties_missed, @goals_conceded, @starts, @opponent_team, @team_id, @value, @was_home, @kickoff_time, @updated_at)`,
     );
     const lookupFixture = this.db.prepare(
       `SELECT team_h, team_a FROM fixtures
@@ -781,6 +781,13 @@ export class SyncService {
             recoveries: history.recoveries,
             clearances_blocks_interceptions: history.clearances_blocks_interceptions,
             defensive_contribution: history.defensive_contribution,
+            saves: history.saves,
+            yellow_cards: history.yellow_cards,
+            red_cards: history.red_cards,
+            own_goals: history.own_goals,
+            penalties_saved: history.penalties_saved,
+            penalties_missed: history.penalties_missed,
+            goals_conceded: history.goals_conceded,
             starts: history.starts,
             opponent_team: history.opponent_team,
             team_id,
