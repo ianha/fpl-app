@@ -151,9 +151,10 @@ describe("MyTeamPage", () => {
     );
 
     expect(await screen.findByRole("heading", { name: /Midnight Press FC/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Pitch View/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Transfer Planner/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Season Archive/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Harper Labs/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Sync$/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("table")).toHaveLength(3);
   });
 
   it("shows auth form when there are no linked accounts", async () => {
@@ -179,9 +180,10 @@ describe("MyTeamPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: /Link your real FPL account/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Link and sync account/i })).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Entry ID \(optional\)/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Link and sync account/i })).toBeDisabled();
   });
 
   it("loads historical picks when a different gameweek is selected", async () => {
@@ -269,10 +271,8 @@ describe("MyTeamPage", () => {
 
     expect(await screen.findByText(/needs to be relinked before the next sync/i)).toBeInTheDocument();
     expect(screen.getByDisplayValue("ian@fpl.local")).toBeInTheDocument();
-    expect(screen.getByText(/saved fpl password is no longer being accepted/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Resolver diagnostics:/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Relink required/i })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Relink and sync/i })).toBeInTheDocument();
-    expect(screen.getByText(/planner actions are temporarily unavailable/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
   });
 });

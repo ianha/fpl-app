@@ -4,6 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { makePlayer } from "./test/factories";
 
+const apiMocks = vi.hoisted(() => ({
+  getOverview: vi.fn(),
+  getGameweeks: vi.fn(),
+  getPlayers: vi.fn(),
+  getMyTeam: vi.fn(),
+  linkMyTeamAccount: vi.fn(),
+  syncMyTeam: vi.fn(),
+  getPlayer: vi.fn(),
+  resolveAssetUrl: vi.fn((imagePath: string | null) =>
+    imagePath ? `http://localhost:4000${imagePath}` : null,
+  ),
+}));
+
 const mockPlayers = [
   makePlayer(10, 3, 1, 215),
   ...Array.from({ length: 4 }, (_, index) => makePlayer(index + 1, 1, index + 1, 100 - index)),
@@ -13,10 +26,21 @@ const mockPlayers = [
 ];
 
 vi.mock("./api/client", () => ({
-  resolveAssetUrl: vi.fn((imagePath: string | null) =>
-    imagePath ? `http://localhost:4000${imagePath}` : null,
-  ),
-  getOverview: vi.fn(async () => ({
+  resolveAssetUrl: apiMocks.resolveAssetUrl,
+  getOverview: apiMocks.getOverview,
+  getGameweeks: apiMocks.getGameweeks,
+  getPlayers: apiMocks.getPlayers,
+  getMyTeam: apiMocks.getMyTeam,
+  linkMyTeamAccount: apiMocks.linkMyTeamAccount,
+  syncMyTeam: apiMocks.syncMyTeam,
+  getPlayer: apiMocks.getPlayer,
+}));
+
+describe("App", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    apiMocks.getOverview.mockResolvedValue({
     generatedAt: "2026-03-14T00:00:00Z",
     gameweeks: [
       {
@@ -105,8 +129,8 @@ vi.mock("./api/client", () => ({
         imagePath: "/assets/teams/2.jpg",
       },
     ],
-  })),
-  getGameweeks: vi.fn(async () => [
+  });
+    apiMocks.getGameweeks.mockResolvedValue([
     {
       id: 1,
       name: "Gameweek 1",
@@ -125,9 +149,9 @@ vi.mock("./api/client", () => ({
       isCurrent: false,
       isFinished: false,
     },
-  ]),
-  getPlayers: vi.fn(async () => mockPlayers),
-  getMyTeam: vi.fn(async () => ({
+  ]);
+    apiMocks.getPlayers.mockResolvedValue(mockPlayers);
+    apiMocks.getMyTeam.mockResolvedValue({
     accounts: [
       {
         id: 1,
@@ -177,10 +201,8 @@ vi.mock("./api/client", () => ({
         activeChip: null,
       },
     ],
-  })),
-  linkMyTeamAccount: vi.fn(),
-  syncMyTeam: vi.fn(),
-  getPlayer: vi.fn(async () => ({
+  });
+    apiMocks.getPlayer.mockResolvedValue({
     player: {
       id: 10,
       webName: "Saka",
@@ -255,34 +277,33 @@ vi.mock("./api/client", () => ({
       },
     ],
     upcomingFixtures: [],
-  })),
-}));
-
-describe("App", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  });
   });
 
-  it("renders the dashboard shell", async () => {
+  it("renders shared navigation and loads dashboard data on the root route", async () => {
     render(
       <MemoryRouter>
         <App />
       </MemoryRouter>,
     );
-    expect(await screen.findByRole("heading", { name: /Top Performers/i })).toBeInTheDocument();
-    expect(await screen.findByText("Saka")).toBeInTheDocument();
-    expect(await screen.findByText("xGI")).toBeInTheDocument();
+
+    expect(await screen.findByRole("link", { name: /Dashboard/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /My Team/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Players/i }).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("heading", { name: /Gameweek 1/i })).toBeInTheDocument();
+    expect(apiMocks.getOverview).toHaveBeenCalled();
   });
 
-  it("renders the My Team page inside the shared shell", async () => {
+  it("renders the my-team route inside the shared shell", async () => {
     render(
       <MemoryRouter initialEntries={["/my-team"]}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole("heading", { name: /Pitch View/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Midnight Press FC/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /My Team/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /Transfer Planner/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sync/i })).toBeInTheDocument();
+    expect(apiMocks.getMyTeam).toHaveBeenCalled();
   });
 });
