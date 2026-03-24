@@ -152,6 +152,55 @@ export function createApiRouter(db: AppDatabase) {
     }
   });
 
+  // GET /api/my-team/:accountId/recap/:gw/preview — HTML page with OG/Twitter card meta tags
+  // so X/WhatsApp/Telegram scrapers render the recap image inline when the link is shared.
+  // Real browsers are immediately redirected to the PNG via <meta http-equiv="refresh">.
+  router.get("/my-team/:accountId/recap/:gw/preview", (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const gw = Number(req.params.gw);
+    if (!accountId || !gw) {
+      res.status(400).send("Bad request");
+      return;
+    }
+    const data = recapCardService.getRecapData(accountId, gw);
+    if (!data) {
+      res.status(404).send("Not found");
+      return;
+    }
+
+    // Escape HTML special characters to prevent injection into meta tag attributes
+    function esc(s: string): string {
+      return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    const origin = `${req.protocol}://${req.get("host")}`;
+    const imageUrl = `${origin}/api/my-team/${accountId}/recap/${gw}`;
+    const title = esc(`${data.managerName} — GW${gw} Recap`);
+    const description = esc(`${data.points} pts · Rank #${data.overallRank.toLocaleString()} · ${data.teamName}`);
+    const safeImageUrl = esc(imageUrl);
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:image" content="${safeImageUrl}">
+  <meta property="og:image:width" content="480">
+  <meta property="og:image:height" content="320">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${safeImageUrl}">
+  <meta http-equiv="refresh" content="0;url=${safeImageUrl}">
+</head>
+<body></body>
+</html>`);
+  });
+
   router.get("/my-team/:accountId/recap/:gw", async (req, res) => {
     const accountId = Number(req.params.accountId);
     const gw = Number(req.params.gw);

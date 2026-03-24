@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, Share2 } from "lucide-react";
+import { Check, Copy, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -36,28 +36,53 @@ function TelegramIcon() {
   );
 }
 
+// Returns true if the browser supports writing image blobs to the clipboard.
+// Evaluated lazily (not at module load) so tests can stub window.ClipboardItem.
+function supportsClipboardImage(): boolean {
+  return typeof window !== "undefined" && "ClipboardItem" in window && !!window.ClipboardItem;
+}
+
 export function ShareRecapDialog({ open, onOpenChange, accountId, gameweek, teamName }: ShareRecapDialogProps) {
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState(false);
 
   const recapUrl = `/api/my-team/${accountId}/recap/${gameweek}`;
   const absoluteUrl = `${window.location.origin}${recapUrl}`;
+  // /preview page has OG meta tags so X/WhatsApp/Telegram scrapers render the image inline
+  const previewUrl = `${window.location.origin}/api/my-team/${accountId}/recap/${gameweek}/preview`;
   const shareText = `GW${gameweek} Recap 📊 #FPL #GW${gameweek}`;
 
-  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(absoluteUrl)}`;
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${absoluteUrl}`)}`;
-  const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(absoluteUrl)}&text=${encodeURIComponent(shareText)}`;
+  const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(previewUrl)}`;
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${previewUrl}`)}`;
+  const tgUrl = `https://t.me/share/url?url=${encodeURIComponent(previewUrl)}&text=${encodeURIComponent(shareText)}`;
 
   const canShareFiles = typeof navigator !== "undefined" && "canShare" in navigator;
+  const canCopyImage = supportsClipboardImage();
 
-  async function copyLink() {
+  async function copyImage() {
+    setCopying(true);
+    setCopyError(false);
     try {
-      await navigator.clipboard.writeText(absoluteUrl);
+      const res = await fetch(recapUrl);
+      if (!res.ok) throw new Error("fetch failed");
+      if (canCopyImage) {
+        // Copy the actual PNG binary to the clipboard — user can paste it as an image
+        const blob = await res.blob();
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      } else {
+        // Fallback: copy the direct PNG URL
+        await navigator.clipboard.writeText(absoluteUrl);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // clipboard not available — silently ignore
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 3000);
+    } finally {
+      setCopying(false);
     }
   }
 
@@ -83,6 +108,8 @@ export function ShareRecapDialog({ open, onOpenChange, accountId, gameweek, team
   function openLink(url: string) {
     window.open(url, "_blank", "noreferrer");
   }
+
+  const copyLabel = copying ? "Copying…" : copied ? "Copied!" : canCopyImage ? "Copy image" : "Copy link";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,10 +150,10 @@ export function ShareRecapDialog({ open, onOpenChange, accountId, gameweek, team
           )}
 
           {shareError && (
-            <p className="text-xs text-red-400">Couldn't share the image. Try copying the link instead.</p>
+            <p className="text-xs text-red-400">Couldn&apos;t share the image. Try saving it instead.</p>
           )}
 
-          {/* Platform deep links */}
+          {/* Platform deep links — URLs point to /preview page so scrapers show the og:image */}
           <div className="grid grid-cols-3 gap-2">
             <Button
               variant="outline"
@@ -157,19 +184,36 @@ export function ShareRecapDialog({ open, onOpenChange, accountId, gameweek, team
             </Button>
           </div>
 
-          {/* Copy link */}
+          {/* Copy image (ClipboardItem) or copy link fallback */}
           <Button
             variant="outline"
             className="w-full justify-start gap-3"
-            onClick={copyLink}
+            onClick={copyImage}
+            disabled={copying}
           >
-            {copied ? (
+            {copying ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : copied ? (
               <Check className="h-4 w-4 text-accent" />
             ) : (
               <Copy className="h-4 w-4" />
             )}
-            {copied ? "Copied!" : "Copy link"}
+            {copyLabel}
           </Button>
+
+          {copyError && (
+            <p className="text-xs text-red-400">Couldn&apos;t copy. Try saving the image instead.</p>
+          )}
+
+          {/* Download / save image */}
+          <a
+            href={recapUrl}
+            download={`fplytics-gw${gameweek}-recap.png`}
+            className="inline-flex w-full items-center gap-3 rounded-lg border border-border bg-transparent px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-secondary hover:text-foreground"
+          >
+            <Download className="h-4 w-4" />
+            Save image
+          </a>
 
           {/* Instagram / Signal note */}
           {canShareFiles && (
