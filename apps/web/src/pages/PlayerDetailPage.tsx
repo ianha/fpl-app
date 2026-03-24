@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import type { PlayerDetail } from "@fpl/contracts";
 import { getPlayer, getPlayerXpts, resolveAssetUrl } from "@/api/client";
-import { formatCost, formatPercent } from "@/lib/format";
+import { formatCost } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Users, Zap, Shield, Target, TrendingUp } from "lucide-react";
@@ -48,6 +48,13 @@ function StatBox({ label, value, accent }: { label: string; value: string | numb
       <p className={`font-display text-lg font-bold ${accent ?? "text-white"}`}>{value}</p>
     </div>
   );
+}
+
+function ownershipTier(pct: number): { label: string; color: string } {
+  if (pct >= 50) return { label: "Essential", color: "text-red-400 bg-red-500/10 border-red-500/30" };
+  if (pct >= 20) return { label: "Popular", color: "text-orange-400 bg-orange-500/10 border-orange-500/30" };
+  if (pct >= 5)  return { label: "Niche", color: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30" };
+  return { label: "Differential", color: "text-accent bg-accent/10 border-accent/30" };
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -236,10 +243,35 @@ export function PlayerDetailPage() {
           { label: "xGI", value: player.expectedGoalInvolvements.toFixed(2), accent: "text-primary" },
           { label: "Minutes", value: player.minutes },
           { label: "Bonus", value: player.bonus },
-          { label: "Sel%", value: formatPercent(Number(player.selectedByPercent)) },
         ].map(({ label, value, accent }) => (
           <StatBox key={label} label={label} value={value} accent={accent} />
         ))}
+      </div>
+
+      {/* Ownership */}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-2">
+          Ownership
+        </div>
+        <div className="flex items-end gap-2">
+          <span className="text-2xl font-bold text-white tabular-nums">
+            {player.selectedByPercent.toFixed(1)}%
+          </span>
+          <span className="mb-0.5 text-xs text-white/40">of managers</span>
+        </div>
+        {(() => {
+          const tier = ownershipTier(player.selectedByPercent);
+          return (
+            <span className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${tier.color}`}>
+              {tier.label}
+            </span>
+          );
+        })()}
+        {player.selectedByPercent < 5 && (
+          <p className="mt-1.5 text-[11px] text-white/40">
+            Low ownership — playing this player is a differential pick
+          </p>
+        )}
       </div>
 
       {/* Charts row */}

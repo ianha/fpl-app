@@ -4,11 +4,13 @@ import type { AppDatabase } from "../db/database.js";
 import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
 import { liveGwService } from "../services/liveGwService.js";
 import type { LiveGwUpdate } from "@fpl/contracts";
+import { RecapCardService } from "../services/recapCardService.js";
 
 export function createApiRouter(db: AppDatabase) {
   const router = Router();
   const queryService = new QueryService(db);
   const myTeamSyncService = new MyTeamSyncService(db);
+  const recapCardService = new RecapCardService(db);
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -146,6 +148,33 @@ export function createApiRouter(db: AppDatabase) {
     } catch (error) {
       res.status(400).json({
         message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.get("/my-team/:accountId/recap/:gw", async (req, res) => {
+    const accountId = Number(req.params.accountId);
+    const gw = Number(req.params.gw);
+    if (!accountId || !gw) {
+      res.status(400).json({ message: "accountId and gw are required" });
+      return;
+    }
+    const data = recapCardService.getRecapData(accountId, gw);
+    if (!data) {
+      res.status(404).json({ message: "No recap data found for this account and gameweek" });
+      return;
+    }
+    try {
+      const png = await recapCardService.renderCard(data);
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="fplytics-gw${gw}-recap.png"`,
+      );
+      res.send(png);
+    } catch (err) {
+      res.status(500).json({
+        message: err instanceof Error ? err.message : "Failed to render recap card",
       });
     }
   });
