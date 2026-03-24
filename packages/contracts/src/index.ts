@@ -228,6 +228,7 @@ export type PlayerXpts = {
   playerId: number;
   playerName: string;
   teamShortName: string;
+  imagePath: string | null;
   position: string;
   nextOpponent: string;
   difficulty: number;

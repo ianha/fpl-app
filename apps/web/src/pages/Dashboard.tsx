@@ -15,6 +15,7 @@ import {
   Clock,
   Zap,
   Sparkles,
+  ShieldAlert,
 } from "lucide-react";
 
 type AsyncState<T> =
@@ -33,35 +34,75 @@ const POSITION_LABELS: Record<number, { short: string; color: string }> = {
 let _dashboardCache: OverviewResponse | null = null;
 let _dashboardXptsCache: PlayerXpts[] | null = null;
 
-// Best XI: top xPts player per position slot (GKP×1, DEF×4, MID×4, FWD×2 = 11)
-const BEST_XI_SLOTS: { posId: number; label: string; count: number }[] = [
-  { posId: 1, label: "GKP", count: 1 },
-  { posId: 2, label: "DEF", count: 4 },
-  { posId: 3, label: "MID", count: 4 },
-  { posId: 4, label: "FWD", count: 2 },
+// All valid FPL formations: GKP=1 fixed, DEF 3-5, MID 2-5, FWD 1-3, total outfield = 10
+const VALID_FORMATIONS = [
+  { def: 3, mid: 5, fwd: 2 },
+  { def: 3, mid: 4, fwd: 3 },
+  { def: 4, mid: 5, fwd: 1 },
+  { def: 4, mid: 4, fwd: 2 },
+  { def: 4, mid: 3, fwd: 3 },
+  { def: 5, mid: 4, fwd: 1 },
+  { def: 5, mid: 3, fwd: 2 },
+  { def: 5, mid: 2, fwd: 3 },
 ];
 
-function buildBestXI(xptsList: PlayerXpts[]): PlayerXpts[] {
-  const result: PlayerXpts[] = [];
-  for (const slot of BEST_XI_SLOTS) {
-    const candidates = xptsList
-      .filter((p) => {
-        const posMap: Record<string, number> = { Goalkeeper: 1, Defender: 2, Midfielder: 3, Forward: 4 };
-        return posMap[p.position] === slot.posId && p.xpts !== null;
-      })
-      .sort((a, b) => (b.xpts ?? 0) - (a.xpts ?? 0))
-      .slice(0, slot.count);
-    result.push(...candidates);
+const POS_ID: Record<string, number> = { Goalkeeper: 1, Defender: 2, Midfielder: 3, Forward: 4 };
+
+// Minimum probability of starting (60+ min) to be eligible for Optimal XI
+const MIN_START_PROBABILITY = 0.5;
+
+function buildBestXI(xptsList: PlayerXpts[]): { players: PlayerXpts[]; formation: string } {
+  const sorted = (posId: number) =>
+    xptsList
+      .filter((p) => POS_ID[p.position] === posId && p.xpts !== null && p.minutesProbability >= MIN_START_PROBABILITY)
+      .sort((a, b) => (b.xpts ?? 0) - (a.xpts ?? 0));
+
+  const gkp = sorted(1);
+  const def = sorted(2);
+  const mid = sorted(3);
+  const fwd = sorted(4);
+
+  const gkpXpts = gkp[0]?.xpts ?? 0;
+
+  let bestTotal = -Infinity;
+  let best = VALID_FORMATIONS[3]; // fallback 4-4-2
+
+  for (const f of VALID_FORMATIONS) {
+    const total =
+      gkpXpts +
+      def.slice(0, f.def).reduce((s, p) => s + (p.xpts ?? 0), 0) +
+      mid.slice(0, f.mid).reduce((s, p) => s + (p.xpts ?? 0), 0) +
+      fwd.slice(0, f.fwd).reduce((s, p) => s + (p.xpts ?? 0), 0);
+    if (total > bestTotal) {
+      bestTotal = total;
+      best = f;
+    }
   }
-  return result;
+
+  const players = [
+    ...gkp.slice(0, 1),
+    ...def.slice(0, best.def),
+    ...mid.slice(0, best.mid),
+    ...fwd.slice(0, best.fwd),
+  ];
+
+  // Group into pitch rows: GKP, DEF, MID, FWD
+  const pitchRows: PlayerXpts[][] = [
+    gkp.slice(0, 1),
+    def.slice(0, best.def),
+    mid.slice(0, best.mid),
+    fwd.slice(0, best.fwd),
+  ];
+
+  return { players, pitchRows, formation: `${best.def}-${best.mid}-${best.fwd}` };
 }
 
 export function Dashboard() {
   const [state, setState] = useState<AsyncState<OverviewResponse>>(
     () => _dashboardCache ? { status: "ready", data: _dashboardCache } : { status: "loading" }
   );
-  const [bestXI, setBestXI] = useState<PlayerXpts[]>(
-    () => _dashboardXptsCache ? buildBestXI(_dashboardXptsCache) : [],
+  const [bestXI, setBestXI] = useState<{ players: PlayerXpts[]; pitchRows: PlayerXpts[][]; formation: string }>(
+    () => _dashboardXptsCache ? buildBestXI(_dashboardXptsCache) : { players: [], pitchRows: [], formation: "" },
   );
   // Skip entrance animations when data was already in cache at mount time
   const noAnim = useRef(state.status === "ready").current;
@@ -373,13 +414,16 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* Best XI by xPts */}
-          {bestXI.length > 0 && (
+          {/* Optimal XI pitch view */}
+          {bestXI.players.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-xl font-bold flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-accent" />
-                  Best XI by xPts
+                  Optimal XI
+                  {bestXI.formation && (
+                    <span className="text-sm font-normal text-white/40 ml-1">({bestXI.formation})</span>
+                  )}
                 </h2>
                 <Link
                   to="/players?col=xPts&dir=desc"
@@ -388,36 +432,67 @@ export function Dashboard() {
                   All players <ChevronRight className="w-3 h-3" />
                 </Link>
               </div>
-              <GlowCard className="p-5" glowColor="teal">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {bestXI.map((p) => {
-                    const posColors: Record<string, string> = {
-                      Goalkeeper: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
-                      Defender: "border-blue-500/30 bg-blue-500/10 text-blue-300",
-                      Midfielder: "border-green-500/30 bg-green-500/10 text-green-300",
-                      Forward: "border-pink-500/30 bg-pink-500/10 text-pink-300",
-                    };
-                    const posShort: Record<string, string> = { Goalkeeper: "GKP", Defender: "DEF", Midfielder: "MID", Forward: "FWD" };
-                    const posClass = posColors[p.position] ?? "border-white/20 bg-white/10 text-white/70";
-                    return (
-                      <Link key={p.playerId} to={`/players/${p.playerId}`}>
-                        <div className="flex flex-col items-center gap-1.5 rounded-xl border border-white/8 bg-white/4 p-3 text-center hover:bg-white/8 transition-colors cursor-pointer">
-                          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${posClass}`}>
-                            {posShort[p.position] ?? p.position}
-                          </span>
-                          <span className="text-xs font-semibold text-white truncate w-full text-center">{p.playerName}</span>
-                          <span className="text-[10px] text-white/40">{p.teamShortName}</span>
-                          <div className="mt-0.5">
-                            <span className="font-display text-base font-bold text-accent">{p.xpts?.toFixed(1)}</span>
-                            <span className="text-[9px] text-white/40 ml-0.5">xPts</span>
-                          </div>
-                          <span className="text-[9px] text-white/30">vs {p.nextOpponent}</span>
-                        </div>
-                      </Link>
-                    );
-                  })}
+
+              <div className="overflow-hidden rounded-2xl border border-white/8">
+                {/* Pitch area */}
+                <div className="relative bg-[linear-gradient(180deg,#2d8a4e_0%,#1f6335_55%,#174d28_100%)] px-4 pb-8 pt-5">
+                  {/* SVG field markings */}
+                  <svg
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <rect x="18" y="0" width="64" height="18" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
+                    <rect x="34" y="0" width="32" height="8" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
+                    <circle cx="50" cy="13" r="0.8" fill="white" fillOpacity="0.12" />
+                    <line x1="0" y1="84" x2="100" y2="84" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
+                    <circle cx="50" cy="84" r="10" fill="none" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
+                    <circle cx="50" cy="84" r="0.8" fill="white" fillOpacity="0.12" />
+                  </svg>
+
+                  <div className="relative z-10 space-y-5">
+                    {bestXI.pitchRows.map((row, rowIdx) => (
+                      <div
+                        key={rowIdx}
+                        className="grid gap-2"
+                        style={{ gridTemplateColumns: `repeat(${Math.max(row.length, 1)}, minmax(0, 1fr))` }}
+                      >
+                        {row.map((p) => {
+                          const image = resolveAssetUrl(p.imagePath);
+                          return (
+                            <Link key={p.playerId} to={`/players/${p.playerId}`}>
+                              <div className="group flex flex-col items-center text-center cursor-pointer">
+                                <div className="mb-1 relative">
+                                  {image ? (
+                                    <img
+                                      src={image}
+                                      alt={p.playerName}
+                                      className="h-16 w-16 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.55)] sm:h-20 sm:w-20 transition-transform duration-200 group-hover:scale-105"
+                                    />
+                                  ) : (
+                                    <div className="flex h-16 w-16 items-center justify-center sm:h-20 sm:w-20">
+                                      <ShieldAlert className="h-7 w-7 text-white/50 drop-shadow" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="w-full max-w-[86px] rounded-md bg-[rgba(5,1,15,0.82)] px-1.5 py-1 backdrop-blur-sm">
+                                  <div className="truncate font-display text-[11px] font-bold leading-tight text-white">
+                                    {p.playerName}
+                                  </div>
+                                  <div className="font-display text-[13px] font-bold tabular-nums leading-tight text-accent">
+                                    {p.xpts?.toFixed(1)}
+                                  </div>
+                                </div>
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </GlowCard>
+              </div>
             </div>
           )}
         </div>

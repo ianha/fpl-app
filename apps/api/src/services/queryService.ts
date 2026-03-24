@@ -817,11 +817,12 @@ export class QueryService {
     // Get all players with their team, position, and next fixture
     type PlayerRow = {
       id: number; webName: string; teamId: number; teamShortName: string;
-      positionId: number; positionName: string; form: number;
+      imagePath: string | null; positionId: number; positionName: string; form: number;
     };
     const players = this.db.prepare(`
       SELECT p.id, p.web_name AS webName, p.team_id AS teamId,
              t.short_name AS teamShortName,
+             p.image_path AS imagePath,
              p.position_id AS positionId, pos.name AS positionName,
              p.form
       FROM players p
@@ -871,6 +872,7 @@ export class QueryService {
           playerId: p.id,
           playerName: p.webName,
           teamShortName: p.teamShortName,
+          imagePath: p.imagePath,
           position: p.positionName,
           nextOpponent: nextFix?.opponentShort ?? "BGW",
           difficulty,
@@ -906,6 +908,7 @@ export class QueryService {
         playerId: p.id,
         playerName: p.webName,
         teamShortName: p.teamShortName,
+        imagePath: p.imagePath,
         position: p.positionName,
         nextOpponent: nextFix.opponentShort,
         difficulty,
