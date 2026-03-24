@@ -21,7 +21,12 @@ function isAuthenticationError(error: unknown) {
     message.includes("FPL login failed") ||
     message.includes("FPL request failed (401)") ||
     message.includes("FPL request failed (403)") ||
-    message.includes("no FPL team entry ID")
+    message.includes("no FPL team entry ID") ||
+    // Node/undici TLS errors that occur when the FPL login server rejects the session
+    message.includes("Unsupported state or unable to authenticate data") ||
+    message.includes("SSL routines") ||
+    message.includes("ECONNRESET") ||
+    message.includes("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
   );
 }
 
@@ -86,6 +91,7 @@ export class MyTeamSyncService {
           entryId: account.entryId,
           syncedGameweeks: 0,
           error: error instanceof Error ? error.message : String(error),
+          isAuthError: isAuthenticationError(error),
         });
       }
     }

@@ -113,13 +113,24 @@ async function run() {
 
   const results = await service.syncAll(force, gameweek);
   const failures = results.filter((result) => "error" in result);
+  const authFailures = failures.filter((f) => "isAuthError" in f && f.isAuthError);
+  const unexpectedFailures = failures.filter((f) => !("isAuthError" in f) || !f.isAuthError);
+
   console.log(
     `My Team sync completed${gameweek ? ` for GW ${gameweek}` : ""}${force ? " (forced)" : ""}. Synced ${results.length - failures.length} account(s).`,
   );
-  if (failures.length > 0) {
+  if (authFailures.length > 0) {
+    // Auth failures are expected (expired session, wrong password) — warn but don't fail the process
+    console.warn(
+      authFailures
+        .map((failure) => `Account ${failure.accountId} needs re-authentication: ${failure.error}`)
+        .join("\n"),
+    );
+  }
+  if (unexpectedFailures.length > 0) {
     console.error(
-      failures
-        .map((failure) => `Account ${failure.accountId} needs attention: ${failure.error}`)
+      unexpectedFailures
+        .map((failure) => `Account ${failure.accountId} sync failed unexpectedly: ${failure.error}`)
         .join("\n"),
     );
     process.exitCode = 1;

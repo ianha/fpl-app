@@ -51,7 +51,7 @@ const POS_ID: Record<string, number> = { Goalkeeper: 1, Defender: 2, Midfielder:
 // Minimum probability of starting (60+ min) to be eligible for Optimal XI
 const MIN_START_PROBABILITY = 0.5;
 
-function buildBestXI(xptsList: PlayerXpts[]): { players: PlayerXpts[]; formation: string } {
+function buildBestXI(xptsList: PlayerXpts[]): { players: PlayerXpts[]; pitchRows: PlayerXpts[][]; formation: string; totalXpts: number } {
   const sorted = (posId: number) =>
     xptsList
       .filter((p) => POS_ID[p.position] === posId && p.xpts !== null && p.minutesProbability >= MIN_START_PROBABILITY)
