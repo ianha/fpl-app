@@ -27,4 +27,7 @@ export const env = {
       : workspaceAssetsDir),
   fplMinRequestIntervalMs: Number(process.env.FPL_MIN_REQUEST_INTERVAL_MS ?? 3000),
   fplAuthSecret: process.env.FPL_AUTH_SECRET ?? "",
+  // PUBLIC_URL: canonical public-facing origin for the API server (e.g. https://fplytics.example.com).
+  // Used to build absolute URLs in OG meta tags. When unset, the origin is inferred from the request.
+  publicUrl: process.env.PUBLIC_URL?.replace(/\/$/, "") ?? "",
 };

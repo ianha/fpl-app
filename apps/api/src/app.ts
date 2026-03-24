@@ -8,6 +8,9 @@ import { env } from "./config/env.js";
 
 export function createApp(db: AppDatabase) {
   const app = express();
+  // Trust X-Forwarded-Proto / X-Forwarded-Host from the nearest reverse proxy so
+  // req.protocol and req.hostname reflect the public-facing origin, not localhost.
+  app.set("trust proxy", 1);
   app.use(cors());
   app.use(express.json());
   app.use("/assets", express.static(env.assetsDir));

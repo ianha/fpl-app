@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { API_ORIGIN } from "@/api/client";
 
 interface ShareRecapDialogProps {
   open: boolean;
@@ -50,9 +51,9 @@ export function ShareRecapDialog({ open, onOpenChange, accountId, gameweek, team
   const [shareError, setShareError] = useState(false);
 
   const recapUrl = `/api/my-team/${accountId}/recap/${gameweek}`;
-  const absoluteUrl = `${window.location.origin}${recapUrl}`;
+  const absoluteUrl = `${API_ORIGIN}${recapUrl}`;
   // /preview page has OG meta tags so X/WhatsApp/Telegram scrapers render the image inline
-  const previewUrl = `${window.location.origin}/api/my-team/${accountId}/recap/${gameweek}/preview`;
+  const previewUrl = `${API_ORIGIN}/api/my-team/${accountId}/recap/${gameweek}/preview`;
   const shareText = `GW${gameweek} Recap 📊 #FPL #GW${gameweek}`;
 
   const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(previewUrl)}`;

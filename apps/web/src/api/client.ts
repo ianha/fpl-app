@@ -28,7 +28,7 @@ function resolveApiBaseUrl() {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
-const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "");
 
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`);

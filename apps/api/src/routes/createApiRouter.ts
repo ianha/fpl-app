@@ -5,6 +5,7 @@ import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
 import { liveGwService } from "../services/liveGwService.js";
 import type { LiveGwUpdate } from "@fpl/contracts";
 import { RecapCardService } from "../services/recapCardService.js";
+import { env } from "../config/env.js";
 
 export function createApiRouter(db: AppDatabase) {
   const router = Router();
@@ -173,7 +174,7 @@ export function createApiRouter(db: AppDatabase) {
       return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    const origin = `${req.protocol}://${req.get("host")}`;
+    const origin = env.publicUrl || `${req.protocol}://${req.get("host")}`;
     const imageUrl = `${origin}/api/my-team/${accountId}/recap/${gw}`;
     const title = esc(`${data.managerName} — GW${gw} Recap`);
     const description = esc(`${data.points} pts · Rank #${data.overallRank.toLocaleString()} · ${data.teamName}`);
