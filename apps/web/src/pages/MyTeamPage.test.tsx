@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MyTeamPage, resetMyTeamPageCacheForTests } from "./MyTeamPage";
@@ -112,11 +112,13 @@ function buildPayload() {
 const {
   getMyTeamMock,
   getMyTeamGameweekPicksMock,
+  getPlayerXptsMock,
   linkMyTeamAccountMock,
   syncMyTeamMock,
 } = vi.hoisted(() => ({
   getMyTeamMock: vi.fn(),
   getMyTeamGameweekPicksMock: vi.fn(),
+  getPlayerXptsMock: vi.fn(),
   linkMyTeamAccountMock: vi.fn(),
   syncMyTeamMock: vi.fn(),
 }));
@@ -124,6 +126,7 @@ const {
 vi.mock("@/api/client", () => ({
   getMyTeam: getMyTeamMock,
   getMyTeamGameweekPicks: getMyTeamGameweekPicksMock,
+  getPlayerXpts: getPlayerXptsMock,
   linkMyTeamAccount: linkMyTeamAccountMock,
   syncMyTeam: syncMyTeamMock,
   getCaptainRecommendation: vi.fn(() => Promise.resolve([])),
@@ -142,6 +145,20 @@ describe("MyTeamPage", () => {
       totalPoints: gameweek === 6 ? 48 : 64,
       pointsOnBench: gameweek === 6 ? 3 : 6,
     }));
+    getPlayerXptsMock.mockResolvedValue([
+      {
+        playerId: mockPlayers[0].id,
+        playerName: mockPlayers[0].webName,
+        teamShortName: mockPlayers[0].teamShortName,
+        imagePath: mockPlayers[0].imagePath,
+        position: mockPlayers[0].positionName,
+        nextOpponent: "ARS (H)",
+        difficulty: 2,
+        xpts: 4.8,
+        form: mockPlayers[0].form,
+        minutesProbability: 0.92,
+      },
+    ]);
     linkMyTeamAccountMock.mockResolvedValue(buildPayload());
     syncMyTeamMock.mockResolvedValue(buildPayload());
   });
@@ -247,6 +264,22 @@ describe("MyTeamPage", () => {
     );
 
     expect(await screen.findAllByLabelText(duplicatedPlayer.webName)).toHaveLength(1);
+  });
+
+  it("toggles pitch overlay modes using xPts and ownership data", async () => {
+    render(
+      <MemoryRouter>
+        <MyTeamPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: /Midnight Press FC/i });
+    fireEvent.click(screen.getByRole("button", { name: /^xPts$/i }));
+
+    expect(await screen.findByText("4.8")).toBeInTheDocument();
+    expect(screen.getByText(/xPts · ARS \(H\)/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /FDR next/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ownership %/i })).not.toBeInTheDocument();
   });
 
   it("shows a relink banner and disables sync when the account needs re-authentication", async () => {

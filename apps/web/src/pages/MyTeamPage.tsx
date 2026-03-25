@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
 import { ArrowRightLeft, ChevronLeft, ChevronRight, Coins, Crown, ExternalLink, Share2, ShieldAlert, Sparkles, Trophy, Zap } from "lucide-react";
-import type { CaptainRecommendation, LiveGwUpdate, MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerDetail } from "@fpl/contracts";
-import { getCaptainRecommendation, getMyTeam, getMyTeamGameweekPicks, getPlayer, linkMyTeamAccount, resolveAssetUrl, subscribeLiveGw, syncMyTeam } from "@/api/client";
+import type { CaptainRecommendation, LiveGwUpdate, MyTeamGameweekPicksResponse, MyTeamPageResponse, MyTeamPick, PlayerDetail, PlayerXpts } from "@fpl/contracts";
+import { getCaptainRecommendation, getMyTeam, getMyTeamGameweekPicks, getPlayer, getPlayerXpts, linkMyTeamAccount, resolveAssetUrl, subscribeLiveGw, syncMyTeam } from "@/api/client";
 import { BGPattern, GlowCard } from "@/components/ui/glow-card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -117,12 +117,31 @@ function getHistoricalCacheKey(accountId: number, gameweek: number): string {
   return `${accountId}|${gameweek}`;
 }
 
-function PitchPlayerCard({ entry, gwPoints, multiplier, onClick }: { entry: SquadEntry; gwPoints?: number; multiplier?: number; onClick?: () => void }) {
+type PitchOverlayMode = "normal" | "xpts";
+
+function PitchPlayerCard({
+  entry,
+  gwPoints,
+  multiplier,
+  onClick,
+  overlayMode,
+  xpts,
+  nextOpponent,
+}: {
+  entry: SquadEntry;
+  gwPoints?: number;
+  multiplier?: number;
+  onClick?: () => void;
+  overlayMode: PitchOverlayMode;
+  xpts?: number | null;
+  nextOpponent?: string | null;
+}) {
   const image = resolveAssetUrl(entry.player.imagePath);
   const interactive = !!onClick;
   // Use isCaptain flag; also treat multiplier ≥ 2 as captain (reliable for historical picks)
   const isCaptain = entry.isCaptain || (multiplier !== undefined && multiplier >= 2);
   const isVice = !isCaptain && entry.isViceCaptain;
+  const showingOverlay = overlayMode !== "normal";
 
   return (
     <div
@@ -138,7 +157,7 @@ function PitchPlayerCard({ entry, gwPoints, multiplier, onClick }: { entry: Squa
       )}
     >
       {/* Kit image with C/V badge pinned to top-left corner */}
-      <div className="relative mb-1">
+      <div className="relative mb-1 rounded-2xl px-1.5 py-1">
         {(isCaptain || isVice) && (
           <span className="absolute left-0 top-0 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[11px] font-extrabold text-black shadow-lg">
             {isCaptain ? "C" : "V"}
@@ -165,7 +184,16 @@ function PitchPlayerCard({ entry, gwPoints, multiplier, onClick }: { entry: Squa
         <div className="truncate font-display text-[11px] font-bold leading-tight text-white">
           {entry.player.webName}
         </div>
-        {gwPoints !== undefined ? (
+        {showingOverlay ? (
+          <>
+            <div className="font-display text-[12px] font-bold leading-tight text-accent">
+              {xpts !== null && xpts !== undefined ? xpts.toFixed(1) : "—"}
+            </div>
+            <div className="truncate text-[9px] uppercase tracking-wide text-white/45">
+              {`xPts · ${nextOpponent ?? "No fixture"}`}
+            </div>
+          </>
+        ) : gwPoints !== undefined ? (
           <div className={cn(
             "font-display text-[13px] font-bold tabular-nums leading-tight",
             gwPoints > 0 ? "text-accent" : gwPoints < 0 ? "text-red-400" : "text-white/35",
@@ -277,6 +305,8 @@ export function MyTeamPage() {
   const [historicalLoading, setHistoricalLoading] = useState(false);
   const [liveData, setLiveData] = useState<LiveGwUpdate | null>(null);
   const [captainRecs, setCaptainRecs] = useState<CaptainRecommendation[]>([]);
+  const [pitchOverlayMode, setPitchOverlayMode] = useState<PitchOverlayMode>("normal");
+  const [playerXpts, setPlayerXpts] = useState<PlayerXpts[]>([]);
   const [selectedPick, setSelectedPick] = useState<{ pick: MyTeamPick; gwPoints: number } | null>(null);
   const [playerDetail, setPlayerDetail] = useState<PlayerDetail | null>(null);
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
@@ -302,6 +332,24 @@ export function MyTeamPage() {
       .catch(() => {})
       .finally(() => setPlayerDetailLoading(false));
   }, [selectedPick]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getPlayerXpts()
+      .then((xptsRows) => {
+        if (cancelled) return;
+        setPlayerXpts(xptsRows);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPlayerXpts([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function applyCachedPage(cache: MyTeamCache) {
     setState(cache.state);
@@ -768,6 +816,28 @@ export function MyTeamPage() {
                 </div>
               )}
 
+              <div className="mb-4 flex flex-wrap gap-2">
+                {([
+                  ["normal", "Normal"],
+                  ["xpts", "xPts"],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPitchOverlayMode(mode)}
+                    aria-pressed={pitchOverlayMode === mode}
+                    className={cn(
+                      "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors",
+                      pitchOverlayMode === mode
+                        ? "border-accent/60 bg-accent/15 text-accent"
+                        : "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               {/* GW selector — prev/next buttons + dropdown */}
               <div className="mb-5 flex flex-wrap items-center gap-2">
                 {/* ← earlier gameweek (history is descending, so idx+1 = lower GW) */}
@@ -876,6 +946,7 @@ export function MyTeamPage() {
                 const livePointsMap = new Map(
                   (liveData && !viewGameweek ? liveData.players : []).map((p) => [p.playerId, p.totalLivePoints])
                 );
+                const xptsMap = new Map(playerXpts.map((row) => [row.playerId, row]));
 
                 return (
                   <div className="overflow-hidden rounded-2xl border border-white/8">
@@ -923,6 +994,9 @@ export function MyTeamPage() {
                                   gwPoints={livePointsMap.size > 0 ? livePointsMap.get(entry.player.id) : (gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] * Math.max(pickBySlotId[entry.slotId]?.multiplier ?? 1, 1) : undefined)}
                                   multiplier={pickBySlotId[entry.slotId]?.multiplier}
                                   onClick={gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
+                                  overlayMode={pitchOverlayMode}
+                                  xpts={xptsMap.get(entry.player.id)?.xpts ?? null}
+                                  nextOpponent={xptsMap.get(entry.player.id)?.nextOpponent ?? null}
                                 />
                               ))}
                             </div>
@@ -946,6 +1020,9 @@ export function MyTeamPage() {
                               entry={entry}
                               gwPoints={isHistorical && gwPointsMap[entry.slotId] !== undefined ? gwPointsMap[entry.slotId] : undefined}
                               onClick={isHistorical && gwPointsMap[entry.slotId] !== undefined ? () => handleCardClick(entry.slotId) : undefined}
+                              overlayMode={pitchOverlayMode}
+                              xpts={xptsMap.get(entry.player.id)?.xpts ?? null}
+                              nextOpponent={xptsMap.get(entry.player.id)?.nextOpponent ?? null}
                             />
                           </div>
                         ))}
