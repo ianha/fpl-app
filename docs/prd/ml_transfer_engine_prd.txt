@@ -1,0 +1,51 @@
+PRD: ML-Powered Transfer Decision Engine (V2) - Revised
+Overview This plan outlines the second-generation transfer-decision pipeline, transitioning from hand-tuned heuristic coefficients to learned model weights
+. Crucially, this updated architecture introduces strict guardrails to preserve the "upside bias" logic
+, solves the small-sample manager profiling problem, and defines explicit schema and automation fallbacks to ensure production stability.
+
+--------------------------------------------------------------------------------
+Step 1: Supervised Event Model & Positional Guardrails
+Goal: Learn dynamic weights for FPL events (minutes, xG, xA, clean sheets) without undoing the recent fixes that prevent low-ceiling bench/goalkeeper churn
+.
+The Features (X): Rolling averages of event metrics from player_history, opponent strength from teams, and was_home
+. To handle double gameweeks safely, the training matrix will group by target match identity via self-joins
+.
+The Target (y): Actual total_points scored in the target match
+.
+Fixing the "Upside Bias" Flaw: The ML model will strictly output the expected event composition (expected raw points) rather than making the final transfer recommendation. The existing deterministic ranker will continue to act as a post-processing layer, enforcing the strict positional upside bias (favoring MID/FWD) and applying the starter-vs-bench penalty to candidate viability
+. This ensures the model doesn't regress to recommending safe but useless goalkeeper swaps
+.
+Step 2: Bayesian Manager Risk Profiling
+Goal: Personalize the hit_cost_adjustment and flexibility_bonus based on a manager's true playing style, while preventing erratic behavior from sparse data.
+Historical ROI Extraction: The evaluate_manager_roi MCP tool will analyze the my_team_transfers and my_team_gameweeks tables to compare the net outcome of player_in_id vs player_out_id minus the event_transfers_cost
+.
+Fixing the "Small Sample Size" Flaw: The tool will implement a Bayesian global fallback. If a manager has fewer than 15 historical transfers or point hits on record, the system will shrink their profile toward a "global average" baseline risk posture. It will only rely entirely on the manager's personalized data once their transfer sample size crosses the statistical confidence threshold.
+Step 3: Robust Automation Feedback Loop
+Goal: Automate model tuning after each gameweek without relying on a fragile, one-time execution trigger
+.
+Trigger Event: During the normal syncService run, when gameweeks.is_finished transitions to 1, the app generates a training signal
+.
+Fixing the "Fragile Trigger" Flaw: Instead of a brittle fire-and-forget API call, the system will record a pending_ml_evaluation flag inside the existing sync_state table
+. If the external MCP script fails to pull the get_training_matrix or encounters an error, the flag remains active, allowing the script to safely retry on the next polling interval without missing the gameweek window
+.
+Step 4: Explicit Model Registry Schema
+Goal: Persist learned ML weights in SQLite for safe activation, rollback, and auditing rather than hiding them in sync_state
+.
+Fixing the "Missing Schema" Flaw: We will introduce two explicit SQLite tables via the repo's additive ensureColumns pattern
+:
+ml_model_registry: Tracks high-level model goals (e.g., id, model_name, target_metric, created_at).
+ml_model_versions: Stores the actual coefficients and state (version_id, registry_id, coefficients_json, is_active, gameweek_scope, updated_at).
+Integration: The update_projection_weights MCP tool will write directly to ml_model_versions
+. The deterministic queryService.ts will load the is_active = 1 row at runtime, allowing seamless rollbacks if a newly trained weight set causes ranking anomalies
+.
+Step 5: MCP Tool & API Contracts
+Goal: Expose the data securely to the external ML trainer while strictly preventing lookahead bias
+.
+get_training_matrix: Returns the double-gameweek-safe historical matrix, enforcing a hard lookback window cutoff
+.
+evaluate_manager_roi: Returns the Bayesian-smoothed manager transfer profile
+.
+update_projection_weights: Writes validated JSON coefficient payloads to ml_model_versions
+.
+API Stability: The existing GET /api/my-team/:accountId/transfer-decision REST endpoint remains completely unchanged, preserving the plain-English explanations (e.g., "stronger goal involvement expectation") for the web UI
+.
