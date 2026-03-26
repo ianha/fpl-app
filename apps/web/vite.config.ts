@@ -9,7 +9,7 @@ import path from "path";
 const logger = createLogger();
 const _originalError = logger.error.bind(logger);
 logger.error = (msg, options) => {
-  if (options?.error && String(options.error).includes("ECONNREFUSED")) return;
+  if (msg.includes("ECONNREFUSED") || (options?.error && String(options.error).includes("ECONNREFUSED"))) return;
   _originalError(msg, options);
 };
 
@@ -46,7 +46,8 @@ export default defineConfig(({ mode }) => {
             proxy.on("error", (err, _req, res) => {
               // Suppress ECONNREFUSED during dev startup — the API may not be ready yet
               // and EventSource clients will auto-reconnect once it is.
-              if ((err as NodeJS.ErrnoException).code === "ECONNREFUSED") return;
+              const isConnRefused = (err as NodeJS.ErrnoException).code === "ECONNREFUSED" || err.message?.includes("ECONNREFUSED");
+              if (isConnRefused) return;
               console.error("[proxy]", err.message);
               // Send a clean error response for non-streaming requests still open
               if (res && "writeHead" in res && typeof (res as import("node:http").ServerResponse).writeHead === "function") {
