@@ -374,7 +374,7 @@ Deterministic post-processing:
 
 - External trainers can use the current MCP endpoint safely for both reads and controlled model writes.
 
-- [ ] **Unit 5: Refactor QueryService to consume learned raw-point inputs while preserving ranking guardrails**
+- [x] **Unit 5: Refactor QueryService to consume learned raw-point inputs while preserving ranking guardrails**
 
 **Goal:** Make the live transfer-decision engine load learned event-point inputs and manager risk profiles without giving up the deterministic anti-churn ranking logic.
 

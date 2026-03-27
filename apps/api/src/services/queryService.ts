@@ -24,6 +24,8 @@ import type {
   TransferDecisionResponse,
 } from "@fpl/contracts";
 import type { AppDatabase } from "../db/database.js";
+import { ManagerRoiService, type ManagerRoiProfile } from "./managerRoiService.js";
+import { MlModelRegistryService } from "./mlModelRegistryService.js";
 
 type PlayerQuery = {
   search?: string;
@@ -150,6 +152,12 @@ type PlayerProjection = {
 type RankedTransferDecision = {
   option: TransferDecisionOption;
   rankingScore: number;
+  guardrailMetrics: GuardrailMetrics;
+};
+
+type GuardrailMetrics = {
+  projectedGain: number;
+  nextGwGain: number;
 };
 
 type HistoricalReplayContext = {
@@ -189,12 +197,39 @@ type ProjectedFixtureScore = {
   cleanSheetProbability: number;
 };
 
+type EventModelWeights = {
+  goalWeight: number;
+  assistWeight: number;
+  cleanSheetWeight: number;
+  saveWeight: number;
+  bonusWeight: number;
+  appearanceWeight: number;
+  concedePenaltyWeight: number;
+};
+
+const ACTIVE_TRANSFER_EVENT_MODEL = "transfer_event_points_v2";
+const DEFAULT_EVENT_MODEL_WEIGHTS: EventModelWeights = {
+  goalWeight: 1,
+  assistWeight: 1,
+  cleanSheetWeight: 1,
+  saveWeight: 1,
+  bonusWeight: 1,
+  appearanceWeight: 1,
+  concedePenaltyWeight: 1,
+};
+
 function mapBoolean(value: number | null | undefined) {
   return Boolean(value);
 }
 
 export class QueryService {
-  constructor(private readonly db: AppDatabase) {}
+  private readonly managerRoiService: ManagerRoiService;
+  private readonly mlModelRegistryService: MlModelRegistryService;
+
+  constructor(private readonly db: AppDatabase) {
+    this.managerRoiService = new ManagerRoiService(db);
+    this.mlModelRegistryService = new MlModelRegistryService(db);
+  }
 
   getGameweeks(): GameweekSummary[] {
     const rows = this.db
@@ -912,7 +947,11 @@ export class QueryService {
       .prepare(`SELECT id FROM gameweeks WHERE is_current = 1 ORDER BY id LIMIT 1`)
       .get() as { id: number } | undefined;
     const startingGameweek = gameweek ?? currentGw?.id ?? 1;
-    const projections = this.getPlayerProjectionMap(startingGameweek, 1);
+    const projections = this.getPlayerProjectionMap(
+      startingGameweek,
+      1,
+      this.getActiveEventModelWeights(),
+    );
 
     return [...projections.values()].map((projection) => ({
       playerId: projection.playerId,
@@ -995,26 +1034,48 @@ export class QueryService {
 
     const bank = historyRow.bank;
     const horizon = input.horizon;
+    const eventModelWeights = this.getActiveEventModelWeights();
+    const useDefaultGuardrails = this.isDefaultEventModelWeights(eventModelWeights);
+    const managerRiskProfile = isHistoricalReplay
+      ? null
+      : this.getManagerRiskProfile(accountId);
     const projections = isHistoricalReplay
-      ? this.getHistoricalPlayerProjectionMap(gameweek, horizon)
-      : this.getPlayerProjectionMap(gameweek, horizon);
+      ? this.getHistoricalPlayerProjectionMap(gameweek, horizon, eventModelWeights)
+      : this.getPlayerProjectionMap(gameweek, horizon, eventModelWeights);
+    const guardrailProjections = useDefaultGuardrails
+      ? projections
+      : (
+          isHistoricalReplay
+            ? this.getHistoricalPlayerProjectionMap(gameweek, horizon, DEFAULT_EVENT_MODEL_WEIGHTS)
+            : this.getPlayerProjectionMap(gameweek, horizon, DEFAULT_EVENT_MODEL_WEIGHTS)
+        );
     const ownedPlayerIds = new Set(picksResponse.picks.map((pick) => pick.player.id));
 
     const rollOption = this.createRollDecisionOption(bank, horizon);
     const bestOneFt = this.createBestOneTransferOption(
       picksResponse.picks,
       projections,
+      guardrailProjections,
       ownedPlayerIds,
       bank,
       horizon,
+      managerRiskProfile,
       { historicalReplay: isHistoricalReplay, gameweek },
     );
 
-    const surfacedBestOneFt = bestOneFt && this.shouldSurfaceTransferOption(bestOneFt.option)
+    const surfacedBestOneFt = bestOneFt && this.shouldSurfaceTransferOption(
+      bestOneFt.option,
+      bestOneFt.guardrailMetrics,
+    )
       ? bestOneFt.option
       : null;
     const options = [rollOption, ...(surfacedBestOneFt ? [surfacedBestOneFt] : [])];
-    const recommended = bestOneFt && this.shouldRecommendTransfer(bestOneFt.option, bestOneFt.rankingScore)
+    const recommended = bestOneFt && this.shouldRecommendTransfer(
+      bestOneFt.option,
+      bestOneFt.rankingScore,
+      managerRiskProfile,
+      bestOneFt.guardrailMetrics,
+    )
       ? bestOneFt.option
       : rollOption;
 
@@ -1094,8 +1155,14 @@ export class QueryService {
     };
   }
 
-  private shouldRecommendTransfer(option: TransferDecisionOption, rankingScore: number) {
-    if (rankingScore <= 0 || option.label === "roll") {
+  private shouldRecommendTransfer(
+    option: TransferDecisionOption,
+    rankingScore: number,
+    managerRiskProfile: ManagerRoiProfile | null,
+    guardrailMetrics: GuardrailMetrics,
+  ) {
+    const minimumScore = this.getMinimumRecommendationScore(managerRiskProfile);
+    if (rankingScore <= minimumScore || option.label === "roll") {
       return false;
     }
 
@@ -1103,7 +1170,7 @@ export class QueryService {
     if (
       transfer?.position === "Goalkeeper" &&
       transfer.priceDelta <= -10 &&
-      option.projectedGain < 4
+      guardrailMetrics.projectedGain < 4
     ) {
       return false;
     }
@@ -1111,7 +1178,10 @@ export class QueryService {
     return true;
   }
 
-  private shouldSurfaceTransferOption(option: TransferDecisionOption) {
+  private shouldSurfaceTransferOption(
+    option: TransferDecisionOption,
+    guardrailMetrics: GuardrailMetrics,
+  ) {
     if (option.label === "roll") {
       return true;
     }
@@ -1128,7 +1198,7 @@ export class QueryService {
     if (
       transfer.position === "Goalkeeper" &&
       transfer.priceDelta <= -10 &&
-      option.projectedGain < 4
+      guardrailMetrics.projectedGain < 4
     ) {
       return false;
     }
@@ -1136,12 +1206,106 @@ export class QueryService {
     return true;
   }
 
+  private getMinimumRecommendationScore(managerRiskProfile: ManagerRoiProfile | null) {
+    switch (managerRiskProfile?.recommendedRiskPosture) {
+      case "safe":
+        return 0.2;
+      case "upside":
+        return -0.05;
+      default:
+        return 0;
+    }
+  }
+
+  private getManagerRiskProfile(accountId: number): ManagerRoiProfile | null {
+    try {
+      return this.managerRoiService.evaluateManagerRoi({ accountId });
+    } catch {
+      return null;
+    }
+  }
+
+  private getManagerRiskScoreAdjustment(
+    managerRiskProfile: ManagerRoiProfile | null,
+    option: TransferDecisionOption,
+    pick: MyTeamPick,
+    incomingProjection: PlayerProjection,
+  ) {
+    if (!managerRiskProfile) {
+      return 0;
+    }
+
+    const closeCallMove = option.projectedGain < 1.2;
+    let adjustment = 0;
+
+    switch (managerRiskProfile.recommendedRiskPosture) {
+      case "safe":
+        if (closeCallMove) adjustment -= 0.25;
+        if (option.remainingBank < 5) adjustment -= 0.05;
+        break;
+      case "upside":
+        if (closeCallMove && pick.role === "starter") adjustment += 0.12;
+        if (incomingProjection.attackingNextGameweekProjection >= 1.5) adjustment += 0.08;
+        break;
+      default:
+        if (closeCallMove && pick.role === "starter") adjustment += 0.03;
+        break;
+    }
+
+    return this.roundToTenth(adjustment);
+  }
+
+  private getActiveEventModelWeights(): EventModelWeights {
+    const activeVersion =
+      this.mlModelRegistryService.getActiveVersionForModelName(
+        ACTIVE_TRANSFER_EVENT_MODEL,
+      );
+
+    if (!activeVersion) {
+      return DEFAULT_EVENT_MODEL_WEIGHTS;
+    }
+
+    const coefficients = activeVersion.coefficients;
+    return {
+      goalWeight: this.readCoefficient(coefficients, "goal_weight", DEFAULT_EVENT_MODEL_WEIGHTS.goalWeight),
+      assistWeight: this.readCoefficient(coefficients, "assist_weight", DEFAULT_EVENT_MODEL_WEIGHTS.assistWeight),
+      cleanSheetWeight: this.readCoefficient(coefficients, "clean_sheet_weight", DEFAULT_EVENT_MODEL_WEIGHTS.cleanSheetWeight),
+      saveWeight: this.readCoefficient(coefficients, "save_weight", DEFAULT_EVENT_MODEL_WEIGHTS.saveWeight),
+      bonusWeight: this.readCoefficient(coefficients, "bonus_weight", DEFAULT_EVENT_MODEL_WEIGHTS.bonusWeight),
+      appearanceWeight: this.readCoefficient(coefficients, "appearance_weight", DEFAULT_EVENT_MODEL_WEIGHTS.appearanceWeight),
+      concedePenaltyWeight: this.readCoefficient(coefficients, "concede_penalty_weight", DEFAULT_EVENT_MODEL_WEIGHTS.concedePenaltyWeight),
+    };
+  }
+
+  private isDefaultEventModelWeights(eventModelWeights: EventModelWeights) {
+    return (
+      eventModelWeights.goalWeight === DEFAULT_EVENT_MODEL_WEIGHTS.goalWeight &&
+      eventModelWeights.assistWeight === DEFAULT_EVENT_MODEL_WEIGHTS.assistWeight &&
+      eventModelWeights.cleanSheetWeight === DEFAULT_EVENT_MODEL_WEIGHTS.cleanSheetWeight &&
+      eventModelWeights.saveWeight === DEFAULT_EVENT_MODEL_WEIGHTS.saveWeight &&
+      eventModelWeights.bonusWeight === DEFAULT_EVENT_MODEL_WEIGHTS.bonusWeight &&
+      eventModelWeights.appearanceWeight === DEFAULT_EVENT_MODEL_WEIGHTS.appearanceWeight &&
+      eventModelWeights.concedePenaltyWeight === DEFAULT_EVENT_MODEL_WEIGHTS.concedePenaltyWeight
+    );
+  }
+
+  private readCoefficient(
+    coefficients: Record<string, unknown>,
+    key: string,
+    fallback: number,
+  ) {
+    const value = coefficients[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  }
+
   private createBestOneTransferOption(
     picks: MyTeamPick[],
     projections: Map<number, PlayerProjection>,
+    guardrailProjections: Map<number, PlayerProjection>,
     ownedPlayerIds: Set<number>,
     bank: number,
     horizon: TransferDecisionHorizon,
+    managerRiskProfile: ManagerRoiProfile | null,
     options?: { historicalReplay?: boolean; gameweek?: number },
   ): RankedTransferDecision | null {
     let bestOption: RankedTransferDecision | null = null;
@@ -1187,6 +1351,20 @@ export class QueryService {
         const nextGwGain = this.roundToTenth(
           incomingProjection.nextGameweekProjection - outgoingProjection.nextGameweekProjection,
         );
+        const guardrailOutgoingProjection =
+          guardrailProjections.get(pick.player.id) ?? outgoingProjection;
+        const guardrailIncomingProjection =
+          guardrailProjections.get(incomingProjection.playerId) ?? incomingProjection;
+        const guardrailMetrics: GuardrailMetrics = {
+          projectedGain: this.roundToTenth(
+            guardrailIncomingProjection.weightedProjection -
+              guardrailOutgoingProjection.weightedProjection,
+          ),
+          nextGwGain: this.roundToTenth(
+            guardrailIncomingProjection.nextGameweekProjection -
+              guardrailOutgoingProjection.nextGameweekProjection,
+          ),
+        };
         const remainingBank = bank + sellValue - incomingProjection.nowCost;
         const option: TransferDecisionOption = {
           id: `best-1ft-${pick.player.id}-${incomingProjection.playerId}-${horizon}`,
@@ -1231,6 +1409,8 @@ export class QueryService {
           pick,
           outgoingProjection,
           incomingProjection,
+          managerRiskProfile,
+          guardrailMetrics,
         );
 
         if (optionScore > bestScore) {
@@ -1238,6 +1418,7 @@ export class QueryService {
           bestOption = {
             option,
             rankingScore: optionScore,
+            guardrailMetrics,
           };
         }
       }
@@ -1251,6 +1432,8 @@ export class QueryService {
     pick: MyTeamPick,
     outgoingProjection: PlayerProjection,
     incomingProjection: PlayerProjection,
+    managerRiskProfile: ManagerRoiProfile | null,
+    guardrailMetrics: GuardrailMetrics,
   ): number {
     if (option.label === "roll") {
       return 0;
@@ -1292,19 +1475,19 @@ export class QueryService {
       if (pick.role !== "starter") score -= 0.18;
     }
 
-    if (pick.player.positionId === 1 && option.projectedGain < 1.4) {
+    if (pick.player.positionId === 1 && guardrailMetrics.projectedGain < 1.4) {
       score -= 0.25;
     }
 
-    if (pick.player.positionId === 1 && option.projectedGain < 1.8) {
+    if (pick.player.positionId === 1 && guardrailMetrics.projectedGain < 1.8) {
       score -= 0.2;
     }
 
-    if (pick.player.positionId === 1 && option.nextGwGain < 0.8) {
+    if (pick.player.positionId === 1 && guardrailMetrics.nextGwGain < 0.8) {
       score -= 0.15;
     }
 
-    if (isGoalkeeperCashGenerationMove && option.projectedGain < 4) {
+    if (isGoalkeeperCashGenerationMove && guardrailMetrics.projectedGain < 4) {
       score -= 1.4;
     }
 
@@ -1312,9 +1495,16 @@ export class QueryService {
       score -= 0.12;
     }
 
-    if (isCashGenerationMove && option.projectedGain < 1.5) {
+    if (isCashGenerationMove && guardrailMetrics.projectedGain < 1.5) {
       score -= 0.45;
     }
+
+    score += this.getManagerRiskScoreAdjustment(
+      managerRiskProfile,
+      option,
+      pick,
+      incomingProjection,
+    );
 
     for (const warning of option.warnings) {
       if (warning.includes("bench depth")) score -= 0.2;
@@ -1526,6 +1716,7 @@ export class QueryService {
   private getPlayerProjectionMap(
     startingGameweek: number,
     horizon: TransferDecisionHorizon,
+    eventModelWeights: EventModelWeights,
   ): Map<number, PlayerProjection> {
     const weights = this.getProjectionWeights(horizon);
     const targetGameweeks = weights.map((_, index) => startingGameweek + index);
@@ -1564,6 +1755,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.total * weights[index]);
         }, 0);
@@ -1578,6 +1770,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.attacking * weights[index]);
         }, 0);
@@ -1592,6 +1785,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.cleanSheet * weights[index]);
         }, 0);
@@ -1605,6 +1799,7 @@ export class QueryService {
         prior,
         fixture,
         teamStrengths,
+        eventModelWeights,
       ));
       const nextGameweekProjection = this.roundToTenth(
         nextFixtureScores.reduce((sum, fixture) => sum + fixture.total, 0),
@@ -1669,6 +1864,7 @@ export class QueryService {
   private getHistoricalPlayerProjectionMap(
     startingGameweek: number,
     horizon: TransferDecisionHorizon,
+    eventModelWeights: EventModelWeights,
   ): Map<number, PlayerProjection> {
     const weights = this.getProjectionWeights(horizon);
     const targetGameweeks = weights.map((_, index) => startingGameweek + index);
@@ -1748,6 +1944,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.total * weights[index]);
         }, 0);
@@ -1762,6 +1959,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.attacking * weights[index]);
         }, 0);
@@ -1776,6 +1974,7 @@ export class QueryService {
             prior,
             fixture,
             teamStrengths,
+            eventModelWeights,
           );
           return sum + (projected.cleanSheet * weights[index]);
         }, 0);
@@ -1789,6 +1988,7 @@ export class QueryService {
         prior,
         fixture,
         teamStrengths,
+        eventModelWeights,
       ));
       const nextGameweekProjection = this.roundToTenth(
         nextFixtureScores.reduce((sum, fixture) => sum + fixture.total, 0),
@@ -2060,6 +2260,7 @@ export class QueryService {
     prior: PositionPrior | undefined,
     fixture: TeamUpcomingFixture,
     teamStrengths: Map<number, TeamStrengthSnapshot>,
+    eventModelWeights: EventModelWeights,
   ): ProjectedFixtureScore {
     const goalPoints: Record<number, number> = { 1: 6, 2: 6, 3: 5, 4: 4 };
     const cleanSheetPoints: Record<number, number> = { 1: 6, 2: 6, 3: 1, 4: 0 };
@@ -2088,15 +2289,26 @@ export class QueryService {
     const expectedSaves = player.positionId === 1
       ? rates.saves90 * expectedMinutesShare * Math.max(0.85, opponentExpectedGoals / 1.15)
       : 0;
-    const appearance = startProbability + sixtyProbability;
-    const bonus = Math.min(0.75, rates.bonus90 * expectedMinutesShare * Math.max(0.9, teamExpectedGoals / 1.35));
+    const appearance = (startProbability + sixtyProbability) * eventModelWeights.appearanceWeight;
+    const bonus = Math.min(
+      0.75,
+      rates.bonus90 * expectedMinutesShare * Math.max(0.9, teamExpectedGoals / 1.35),
+    ) * eventModelWeights.bonusWeight;
     const disciplinePenalty = ((rates.yellow90 * 1) + (rates.red90 * 3)) * expectedMinutesShare;
-    const cleanSheetScore = cleanSheetProbability * (cleanSheetPoints[player.positionId] ?? 0) * sixtyProbability;
-    const concedeScore = (concedePenalty[player.positionId] ?? 0) * (opponentExpectedGoals / 2) * sixtyProbability;
+    const cleanSheetScore =
+      cleanSheetProbability *
+      (cleanSheetPoints[player.positionId] ?? 0) *
+      sixtyProbability *
+      eventModelWeights.cleanSheetWeight;
+    const concedeScore =
+      (concedePenalty[player.positionId] ?? 0) *
+      (opponentExpectedGoals / 2) *
+      sixtyProbability *
+      eventModelWeights.concedePenaltyWeight;
     const attacking =
-      (expectedGoals * (goalPoints[player.positionId] ?? 4)) +
-      (expectedAssists * 3) +
-      (expectedSaves / 3);
+      (expectedGoals * (goalPoints[player.positionId] ?? 4) * eventModelWeights.goalWeight) +
+      (expectedAssists * 3 * eventModelWeights.assistWeight) +
+      ((expectedSaves / 3) * eventModelWeights.saveWeight);
     const total = this.roundToTenth(
       appearance + attacking + cleanSheetScore + bonus - concedeScore - disciplinePenalty,
     );

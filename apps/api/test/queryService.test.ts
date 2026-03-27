@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDatabase } from "../src/db/database.js";
 import { QueryService } from "../src/services/queryService.js";
+import { MlModelRegistryService } from "../src/services/mlModelRegistryService.js";
 import { now, seedPublicData } from "./myTeamFixtures.js";
 
 let tempDir = "";
@@ -754,6 +755,72 @@ describe("QueryService", () => {
   it("hides low-upside goalkeeper cash-generation fallback moves when roll is best", () => {
     const db = createDatabase(path.join(tempDir, "gk-cash-generation.sqlite"));
     seedGoalkeeperCashGenerationScenario(db);
+
+    const queryService = new QueryService(db);
+    const decision = queryService.getTransferDecision(1, { horizon: 3 });
+    const bestOption = decision?.options.find((option) => option.label === "best_1ft");
+
+    expect(decision?.recommendedOptionId).toBe("roll");
+    expect(bestOption).toBeUndefined();
+    expect(decision?.options).toHaveLength(1);
+  });
+
+  it("uses active event-model weights to change projected gains without changing the response shape", () => {
+    const db = createDatabase(path.join(tempDir, "event-model-weights.sqlite"));
+    seedTransferDecisionHeuristicScenario(db, "upside_bias");
+
+    const queryService = new QueryService(db);
+    const baselineDecision = queryService.getTransferDecision(1, { horizon: 3 });
+    const baselineBestOption = baselineDecision?.options.find((option) => option.label === "best_1ft");
+
+    const registryService = new MlModelRegistryService(db);
+    const registry = registryService.ensureRegistry({
+      modelName: "transfer_event_points_v2",
+      targetMetric: "expected_raw_points",
+      description: "Live transfer event model",
+    });
+    registryService.createVersion({
+      registryId: registry.id,
+      versionTag: "test-v1",
+      coefficients: {
+        goal_weight: 1.4,
+        assist_weight: 1.25,
+        clean_sheet_weight: 0.7,
+        save_weight: 0.8,
+      },
+      activate: true,
+    });
+
+    const weightedDecision = new QueryService(db).getTransferDecision(1, { horizon: 3 });
+    const weightedBestOption = weightedDecision?.options.find((option) => option.label === "best_1ft");
+
+    expect(weightedBestOption?.id).toBe(baselineBestOption?.id);
+    expect(weightedBestOption?.projectedGain).not.toBe(baselineBestOption?.projectedGain);
+    expect(weightedBestOption?.reasons[0]).toMatch(/\+.*xPts over 3 GWs/i);
+    expect(weightedDecision?.recommendedOptionId).toContain("best-1ft");
+  });
+
+  it("keeps low-upside goalkeeper cash-generation moves suppressed even with an active event model", () => {
+    const db = createDatabase(path.join(tempDir, "gk-cash-generation-weighted.sqlite"));
+    seedGoalkeeperCashGenerationScenario(db);
+
+    const registryService = new MlModelRegistryService(db);
+    const registry = registryService.ensureRegistry({
+      modelName: "transfer_event_points_v2",
+      targetMetric: "expected_raw_points",
+      description: "Live transfer event model",
+    });
+    registryService.createVersion({
+      registryId: registry.id,
+      versionTag: "defensive-bias",
+      coefficients: {
+        clean_sheet_weight: 1.8,
+        save_weight: 1.6,
+        goal_weight: 0.8,
+        assist_weight: 0.8,
+      },
+      activate: true,
+    });
 
     const queryService = new QueryService(db);
     const decision = queryService.getTransferDecision(1, { horizon: 3 });

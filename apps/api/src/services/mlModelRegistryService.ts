@@ -246,6 +246,12 @@ export class MlModelRegistryService {
     return this.getVersionById(row.id);
   }
 
+  getActiveVersionForModelName(modelName: string): MlModelVersionRecord | null {
+    const registry = this.getRegistryByModelName(modelName);
+    if (!registry) return null;
+    return this.getActiveVersion(registry.id);
+  }
+
   setPendingMlEvaluation(gameweekId: number): PendingMlEvaluationState {
     const payload: PendingMlEvaluationState = {
       gameweekId,
