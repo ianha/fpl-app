@@ -34,6 +34,11 @@ You can append flags directly behind the `--` separator to modify the behavior o
 - No flags: Queue every currently finished gameweek that is not already pending.
 - `--gameweek <id>`: Queue one specific finished gameweek.
 
+**`npm run retrain:model`** (Fit ridge regression and activate new event weights)
+- No flags: Train on pending ML evaluation queue, clear queue on success.
+- `--gameweek <id>`: Train on a single specified gameweek.
+- `--all`: Train on all finished gameweeks concatenated.
+
 **`npm run ack:pending-ml-evaluation`** (Clear processed queue items after successful training)
 - `--gameweek <id>`: Remove one successfully processed gameweek from the pending queue.
 - `--all`: Clear the full queue after a successful batch training/publish run.
@@ -74,12 +79,27 @@ The CLI prints queued gameweeks after a successful run whenever pending ML evalu
 
 If you need to backfill already-finished historical gameweeks after enabling this workflow, run `npm run seed:pending-ml-evaluation`. The command is idempotent and only appends gameweeks that are finished and not already present in the pending queue.
 
-Example manual loop:
+### Internal auto-trainer (recommended)
+
+After sync, run the built-in ridge regression trainer to automatically fit and activate new event weights:
+
+```bash
+npm run sync
+npm run retrain:model        # trains on pending queue, clears on success
+```
+
+The trainer fits 7 event weight coefficients (goal, assist, clean sheet, save, bonus, appearance, concede penalty) using ridge regression on the training matrix. Coefficients are clamped to [0.1, 5.0] and written to the ML model registry. Training is skipped if fewer than 100 rows are available.
+
+### External training via MCP (advanced)
+
+For experimentation with more sophisticated models, the MCP tools remain available:
 
 1. Run `npm run sync`
-2. Read `pending_ml_evaluation` from `sync_state` or via your trainer
-3. Train and publish through MCP
+2. Pull training data via `get_training_matrix` MCP tool
+3. Train externally and publish via `update_projection_weights` MCP tool
 4. Run `npm run ack:pending-ml-evaluation -- --gameweek <id>` for each successful publish
+
+Both paths write to the same model registry — the most recently activated version wins.
 
 ## API Endpoints (`PORT=4000`)
 
