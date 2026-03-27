@@ -298,7 +298,7 @@ Deterministic post-processing:
 
 - The training matrix can be generated repeatably with strict historical cutoffs and no match identity loss.
 
-- [ ] **Unit 3: Build Bayesian manager ROI profiling service**
+- [x] **Unit 3: Build Bayesian manager ROI profiling service**
 
 **Goal:** Compute transfer ROI and hit performance while smoothing sparse manager histories toward a global baseline.
 
@@ -338,7 +338,7 @@ Deterministic post-processing:
 
 - ROI and risk posture outputs remain stable and plausible even when historical data is sparse.
 
-- [ ] **Unit 4: Register MCP tools and validate write contracts**
+- [x] **Unit 4: Register MCP tools and validate write contracts**
 
 **Goal:** Expose the training, ROI, and model-update flows through the existing stateless MCP surface.
 

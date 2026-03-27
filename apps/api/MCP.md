@@ -18,6 +18,39 @@ Execute read-only SQL queries (`SELECT` or `WITH`) against the database. Mutatio
 - **Parameters**: `sql` (string, required) - Valid SQL query.
 - **Returns**: A JSON array of result rows or `{ "error": "<message>" }`.
 
+### Tool: `get_training_matrix`
+Returns a supervised learning dataset mapping historical rolling player performance to actual target-match points.
+- **Parameters**:
+  - `target_gameweek` (integer, required) - The target gameweek to build supervised rows for.
+  - `lookback_window` (integer, optional, default `5`) - Number of prior gameweeks to average into the feature window.
+- **Guarantees**:
+  - Strict no-lookahead enforcement: only `player_history` rows with `round < target_gameweek` are used as features.
+  - Double gameweeks remain match-level because grouping uses target match identity (`player_id`, `round`, `opponent_team`, `kickoff_time`).
+- **Returns**: A JSON array of trainer-ready rows including rolling event features, contextual fixture inputs, and actual points.
+
+### Tool: `evaluate_manager_roi`
+Returns a Bayesian-smoothed manager transfer profile derived from `my_team_transfers`, `my_team_gameweeks`, and future player outcomes.
+- **Parameters**:
+  - `account_id` (integer, required) - The `my_team_accounts.id` to profile.
+  - `from_gameweek` (integer, optional) - Optional lower gameweek bound.
+  - `to_gameweek` (integer, optional) - Optional upper gameweek bound.
+  - `future_window` (integer, optional, default `3`) - Number of future gameweeks to score transfer outcomes across.
+  - `sample_threshold` (integer, optional, default `15`) - Minimum history size before using fully personalized values.
+- **Returns**: A JSON object containing per-transfer outcomes, hit ROI, success rate, a Bayesian-smoothed risk profile, and a recommended posture (`safe`, `balanced`, `upside`).
+
+### Tool: `update_projection_weights`
+Writes a validated coefficient payload to the explicit ML model registry/version tables.
+- **Parameters**:
+  - `model_name` (string, required) - Logical model identifier.
+  - `target_metric` (string, optional, default `expected_raw_points`) - Metric the model predicts.
+  - `description` (string, optional) - Human-readable model description.
+  - `version_tag` (string, optional) - Version label or training-run tag.
+  - `coefficients` (object, required) - JSON coefficient payload.
+  - `metadata` (object, optional) - Additional training metadata.
+  - `gameweek_scope` (string, optional) - Optional scope label for the model version.
+  - `activate` (boolean, optional, default `true`) - Whether to make the new version active immediately.
+- **Returns**: The registry record plus the stored version record.
+
 ### Resource: `schema://fpl-database`
 Returns the schema definition for all tables, columns, and types in the FPL SQLite database. LLMs should read this before formulating queries.
 
@@ -56,6 +89,10 @@ Premier League clubs.
 
 ### Internal Sync Tables
 - `player_sync_status`, `gameweek_player_sync_status`, `sync_state`, `sync_runs`.
+
+### ML Model Tables
+- **`ml_model_registry`**: Tracks logical model identities such as `transfer_event_points_v2`.
+- **`ml_model_versions`**: Stores versioned coefficient payloads, activation state, and scope for runtime use and rollback.
 
 ## Connecting Clients
 

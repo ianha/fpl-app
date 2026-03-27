@@ -80,6 +80,38 @@ export class MlModelRegistryService {
     return this.getRegistryById(Number(result.lastInsertRowid));
   }
 
+  getRegistryByModelName(modelName: string): MlModelRegistryRecord | null {
+    const row = this.db
+      .prepare(
+        `SELECT id, model_name, target_metric, description, created_at, updated_at
+         FROM ml_model_registry
+         WHERE model_name = ?`,
+      )
+      .get(modelName) as RegistryRow | undefined;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      modelName: row.model_name,
+      targetMetric: row.target_metric,
+      description: row.description,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  ensureRegistry(input: {
+    modelName: string;
+    targetMetric: string;
+    description?: string | null;
+  }): MlModelRegistryRecord {
+    return (
+      this.getRegistryByModelName(input.modelName) ??
+      this.createRegistry(input)
+    );
+  }
+
   getRegistryById(id: number): MlModelRegistryRecord {
     const row = this.db
       .prepare(
