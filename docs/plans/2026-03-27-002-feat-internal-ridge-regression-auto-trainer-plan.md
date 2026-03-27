@@ -1,7 +1,7 @@
 ---
 title: "feat: Internal Ridge Regression Auto-Trainer for Event Weights"
 type: feat
-status: active
+status: completed
 date: 2026-03-27
 ---
 
