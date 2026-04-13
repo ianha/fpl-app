@@ -329,11 +329,63 @@ export type GmRankHistory = {
   rivalOverallRank: number;
 };
 
+export type H2HAttributionMetric = {
+  userPoints: number;
+  rivalPoints: number;
+  delta: number;
+};
+
+export type H2HCaptaincyAttribution = H2HAttributionMetric & {
+  shareOfGap: number | null;
+};
+
+export type H2HTransferAttribution = {
+  userHitCost: number;
+  rivalHitCost: number;
+  userNetImpact: number;
+  rivalNetImpact: number;
+  delta: number;
+};
+
+export type H2HBenchAttribution = {
+  userPointsOnBench: number;
+  rivalPointsOnBench: number;
+  delta: number;
+};
+
+export type H2HAttributionBreakdown = {
+  totalPointDelta: number;
+  captaincy: H2HCaptaincyAttribution;
+  transfers: H2HTransferAttribution;
+  bench: H2HBenchAttribution;
+};
+
+export type H2HPositionTrend = "lead" | "trail" | "level";
+
+export type H2HPositionAuditRow = {
+  positionName: string;
+  userPoints: number;
+  rivalPoints: number;
+  pointDelta: number;
+  userSpend: number;
+  rivalSpend: number;
+  userValuePerMillion: number;
+  rivalValuePerMillion: number;
+  valueDelta: number;
+  trend: H2HPositionTrend;
+};
+
+export type H2HPositionalAudit = {
+  rows: H2HPositionAuditRow[];
+};
+
 export type H2HComparisonResponse = {
   syncRequired: boolean;
   rivalEntry: H2HLeagueStanding | null;
   squadOverlap: SquadOverlap | null;
   gmRankHistory: GmRankHistory[];
+  attribution: H2HAttributionBreakdown | null;
+  positionalAudit: H2HPositionalAudit | null;
 };
 
 export type LivePlayerPoints = {

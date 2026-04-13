@@ -1,7 +1,10 @@
 import type {
+  H2HAttributionBreakdown,
   GmRankHistory,
   H2HComparisonResponse,
   H2HLeagueStanding,
+  H2HPositionalAudit,
+  H2HPositionTrend,
   H2HPlayerRef,
   SquadOverlap,
 } from "@fpl/contracts";
@@ -26,6 +29,33 @@ type PlayerRefRow = {
   nowCost: number;
   positionName: string;
 };
+
+type JoinedGameweekRow = {
+  gameweek: number;
+};
+
+type TotalPointDeltaRow = {
+  userTotalPoints: number;
+  rivalTotalPoints: number;
+};
+
+type TotalRow = {
+  total: number | null;
+};
+
+type PositionPointsRow = {
+  positionName: string;
+  totalPoints: number;
+};
+
+type PositionSpendRow = {
+  positionName: string;
+  spend: number;
+};
+
+function roundTo(value: number, digits: number) {
+  return Number(value.toFixed(digits));
+}
 
 export class H2HQueryService {
   constructor(private readonly db: AppDatabase) {}
@@ -72,6 +102,8 @@ export class H2HQueryService {
         rivalEntry: rivalEntry ? this.mapRivalEntry(rivalEntry) : null,
         squadOverlap: null,
         gmRankHistory: [],
+        attribution: null,
+        positionalAudit: null,
       };
     }
 
@@ -94,6 +126,11 @@ export class H2HQueryService {
           ? null
           : this.getSquadOverlap(accountId, rivalEntryId, latestOverlapGameweek.gameweek),
       gmRankHistory: this.getGmRankHistory(accountId, rivalEntryId),
+      attribution: this.getAttribution(accountId, rivalEntryId),
+      positionalAudit:
+        latestOverlapGameweek.gameweek === null
+          ? null
+          : this.getPositionalAudit(accountId, rivalEntryId, latestOverlapGameweek.gameweek),
     };
   }
 
@@ -205,5 +242,276 @@ export class H2HQueryService {
       rank: row.rank,
       totalPoints: row.totalPoints,
     };
+  }
+
+  private getComparedGameweeks(accountId: number, rivalEntryId: number) {
+    return this.db
+      .prepare(
+        `SELECT mtg.gameweek_id AS gameweek
+         FROM my_team_gameweeks mtg
+         INNER JOIN rival_gameweeks rg
+           ON rg.entry_id = @rivalEntryId
+          AND rg.gameweek_id = mtg.gameweek_id
+         WHERE mtg.account_id = @accountId
+         ORDER BY mtg.gameweek_id`,
+      )
+      .all({ accountId, rivalEntryId }) as JoinedGameweekRow[];
+  }
+
+  private getAttribution(accountId: number, rivalEntryId: number): H2HAttributionBreakdown {
+    const comparedGameweeks = this.getComparedGameweeks(accountId, rivalEntryId);
+    const totalPointRow = this.db
+      .prepare(
+        `SELECT
+           mtg.total_points AS userTotalPoints,
+           rg.total_points AS rivalTotalPoints
+         FROM my_team_gameweeks mtg
+         INNER JOIN rival_gameweeks rg
+           ON rg.entry_id = @rivalEntryId
+          AND rg.gameweek_id = mtg.gameweek_id
+         WHERE mtg.account_id = @accountId
+         ORDER BY mtg.gameweek_id DESC
+         LIMIT 1`,
+      )
+      .get({ accountId, rivalEntryId }) as TotalPointDeltaRow | undefined;
+
+    const captaincyUser = this.getCaptaincyTotal("my_team_picks", "account_id", accountId, comparedGameweeks);
+    const captaincyRival = this.getCaptaincyTotal("rival_picks", "entry_id", rivalEntryId, comparedGameweeks);
+    const totalPointDelta = (totalPointRow?.userTotalPoints ?? 0) - (totalPointRow?.rivalTotalPoints ?? 0);
+    const captaincyDelta = captaincyUser - captaincyRival;
+
+    const userTransferNetImpact = this.getTransferNetImpact(accountId, rivalEntryId, "user", comparedGameweeks);
+    const rivalTransferNetImpact = this.getTransferNetImpact(accountId, rivalEntryId, "rival", comparedGameweeks);
+    const userHitCost = this.getHitCost(accountId, rivalEntryId, "user", comparedGameweeks);
+    const rivalHitCost = this.getHitCost(accountId, rivalEntryId, "rival", comparedGameweeks);
+
+    const userBench = this.getBenchPoints(accountId, rivalEntryId, "user", comparedGameweeks);
+    const rivalBench = this.getBenchPoints(accountId, rivalEntryId, "rival", comparedGameweeks);
+
+    return {
+      totalPointDelta,
+      captaincy: {
+        userPoints: captaincyUser,
+        rivalPoints: captaincyRival,
+        delta: captaincyDelta,
+        shareOfGap: totalPointDelta === 0 ? null : roundTo((captaincyDelta / totalPointDelta) * 100, 1),
+      },
+      transfers: {
+        userHitCost,
+        rivalHitCost,
+        userNetImpact: userTransferNetImpact,
+        rivalNetImpact: rivalTransferNetImpact,
+        delta: userTransferNetImpact - rivalTransferNetImpact,
+      },
+      bench: {
+        userPointsOnBench: userBench,
+        rivalPointsOnBench: rivalBench,
+        delta: rivalBench - userBench,
+      },
+    };
+  }
+
+  private getCaptaincyTotal(
+    tableName: "my_team_picks" | "rival_picks",
+    ownerColumn: "account_id" | "entry_id",
+    ownerId: number,
+    comparedGameweeks: JoinedGameweekRow[],
+  ) {
+    if (comparedGameweeks.length === 0) {
+      return 0;
+    }
+    const placeholders = comparedGameweeks.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `SELECT SUM(gw_points * CASE WHEN multiplier > 1 THEN multiplier - 1 ELSE 0 END) AS total
+         FROM ${tableName}
+         WHERE ${ownerColumn} = ?
+           AND gameweek_id IN (${placeholders})`,
+      )
+      .get(ownerId, ...comparedGameweeks.map((row) => row.gameweek)) as TotalRow;
+    return result.total ?? 0;
+  }
+
+  private getTransferNetImpact(
+    accountId: number,
+    rivalEntryId: number,
+    owner: "user" | "rival",
+    comparedGameweeks: JoinedGameweekRow[],
+  ) {
+    const [tableName, ownerColumn, ownerId] =
+      owner === "user"
+        ? ["my_team_gameweeks", "account_id", accountId]
+        : ["rival_gameweeks", "entry_id", rivalEntryId];
+    if (comparedGameweeks.length === 0) {
+      return 0;
+    }
+    const placeholders = comparedGameweeks.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `SELECT SUM(g.points - COALESCE(gw.average_entry_score, 0) - g.event_transfers_cost) AS total
+         FROM ${tableName} g
+         LEFT JOIN gameweeks gw ON gw.id = g.gameweek_id
+         WHERE g.${ownerColumn} = ?
+           AND g.gameweek_id IN (${placeholders})
+           AND g.event_transfers > 0`,
+      )
+      .get(ownerId, ...comparedGameweeks.map((row) => row.gameweek)) as TotalRow;
+    return result.total ?? 0;
+  }
+
+  private getHitCost(
+    accountId: number,
+    rivalEntryId: number,
+    owner: "user" | "rival",
+    comparedGameweeks: JoinedGameweekRow[],
+  ) {
+    const [tableName, ownerColumn, ownerId] =
+      owner === "user"
+        ? ["my_team_gameweeks", "account_id", accountId]
+        : ["rival_gameweeks", "entry_id", rivalEntryId];
+    if (comparedGameweeks.length === 0) {
+      return 0;
+    }
+    const placeholders = comparedGameweeks.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `SELECT SUM(event_transfers_cost) AS total
+         FROM ${tableName}
+         WHERE ${ownerColumn} = ?
+           AND gameweek_id IN (${placeholders})`,
+      )
+      .get(ownerId, ...comparedGameweeks.map((row) => row.gameweek)) as TotalRow;
+    return result.total ?? 0;
+  }
+
+  private getBenchPoints(
+    accountId: number,
+    rivalEntryId: number,
+    owner: "user" | "rival",
+    comparedGameweeks: JoinedGameweekRow[],
+  ) {
+    const [tableName, ownerColumn, ownerId] =
+      owner === "user"
+        ? ["my_team_gameweeks", "account_id", accountId]
+        : ["rival_gameweeks", "entry_id", rivalEntryId];
+    if (comparedGameweeks.length === 0) {
+      return 0;
+    }
+    const placeholders = comparedGameweeks.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `SELECT SUM(points_on_bench) AS total
+         FROM ${tableName}
+         WHERE ${ownerColumn} = ?
+           AND gameweek_id IN (${placeholders})`,
+      )
+      .get(ownerId, ...comparedGameweeks.map((row) => row.gameweek)) as TotalRow;
+    return result.total ?? 0;
+  }
+
+  private getPositionalAudit(
+    accountId: number,
+    rivalEntryId: number,
+    latestGameweek: number,
+  ): H2HPositionalAudit {
+    const userPoints = this.getPositionPoints("my_team_picks", "account_id", accountId, accountId, rivalEntryId);
+    const rivalPoints = this.getPositionPoints("rival_picks", "entry_id", rivalEntryId, accountId, rivalEntryId);
+    const userSpend = this.getPositionSpend("my_team_picks", "account_id", accountId, latestGameweek);
+    const rivalSpend = this.getPositionSpend("rival_picks", "entry_id", rivalEntryId, latestGameweek);
+    const positionNames = ["Goalkeeper", "Defender", "Midfielder", "Forward"];
+
+    return {
+      rows: positionNames.map((positionName) => {
+        const userPointTotal = userPoints.get(positionName) ?? 0;
+        const rivalPointTotal = rivalPoints.get(positionName) ?? 0;
+        const userSpendTotal = userSpend.get(positionName) ?? 0;
+        const rivalSpendTotal = rivalSpend.get(positionName) ?? 0;
+        const userValuePerMillion =
+          userSpendTotal > 0 ? roundTo(userPointTotal / userSpendTotal, 2) : 0;
+        const rivalValuePerMillion =
+          rivalSpendTotal > 0 ? roundTo(rivalPointTotal / rivalSpendTotal, 2) : 0;
+        const pointDelta = userPointTotal - rivalPointTotal;
+        const valueDelta = roundTo(userValuePerMillion - rivalValuePerMillion, 2);
+
+        return {
+          positionName,
+          userPoints: userPointTotal,
+          rivalPoints: rivalPointTotal,
+          pointDelta,
+          userSpend: roundTo(userSpendTotal, 1),
+          rivalSpend: roundTo(rivalSpendTotal, 1),
+          userValuePerMillion,
+          rivalValuePerMillion,
+          valueDelta,
+          trend: this.getPositionTrend(pointDelta, valueDelta),
+        };
+      }),
+    };
+  }
+
+  private getPositionPoints(
+    tableName: "my_team_picks" | "rival_picks",
+    ownerColumn: "account_id" | "entry_id",
+    ownerId: number,
+    accountId: number,
+    rivalEntryId: number,
+  ) {
+    const rows = this.getComparedGameweeks(accountId, rivalEntryId);
+    if (rows.length === 0) {
+      return new Map<string, number>();
+    }
+    const placeholders = rows.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `SELECT pos.name AS positionName, SUM(p.gw_points) AS totalPoints
+         FROM ${tableName} p
+         INNER JOIN players pl ON pl.id = p.player_id
+         INNER JOIN positions pos ON pos.id = pl.position_id
+         WHERE p.${ownerColumn} = ?
+           AND p.gameweek_id IN (${placeholders})
+           AND p.position <= 11
+         GROUP BY pos.name
+         ORDER BY pos.id`,
+      )
+      .all(ownerId, ...rows.map((row) => row.gameweek)) as PositionPointsRow[];
+    return new Map(result.map((row) => [row.positionName, row.totalPoints]));
+  }
+
+  private getPositionSpend(
+    tableName: "my_team_picks" | "rival_picks",
+    ownerColumn: "account_id" | "entry_id",
+    ownerId: number,
+    gameweek: number,
+  ) {
+    const result = this.db
+      .prepare(
+        `SELECT pos.name AS positionName, SUM(pl.now_cost) / 10.0 AS spend
+         FROM ${tableName} p
+         INNER JOIN players pl ON pl.id = p.player_id
+         INNER JOIN positions pos ON pos.id = pl.position_id
+         WHERE p.${ownerColumn} = ?
+           AND p.gameweek_id = ?
+           AND p.position <= 11
+         GROUP BY pos.name
+         ORDER BY pos.id`,
+      )
+      .all(ownerId, gameweek) as PositionSpendRow[];
+    return new Map(result.map((row) => [row.positionName, row.spend]));
+  }
+
+  private getPositionTrend(pointDelta: number, valueDelta: number): H2HPositionTrend {
+    if (pointDelta <= -3) {
+      return "trail";
+    }
+    if (pointDelta >= 3) {
+      return "lead";
+    }
+    if (valueDelta <= -0.15) {
+      return "trail";
+    }
+    if (valueDelta >= 0.15) {
+      return "lead";
+    }
+    return "level";
   }
 }

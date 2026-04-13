@@ -47,6 +47,97 @@ describe("H2HQueryService", () => {
     ]);
   });
 
+  it("returns attribution metrics for captaincy, transfer impact, and bench usage", () => {
+    const db = createDatabase(makeDbPath());
+    seedH2HComparisonData(db);
+
+    const service = new H2HQueryService(db);
+    const response = service.getH2HComparison(1, 99, 501);
+
+    expect(response.attribution).toEqual({
+      totalPointDelta: 6,
+      captaincy: {
+        userPoints: 17,
+        rivalPoints: 14,
+        delta: 3,
+        shareOfGap: 50,
+      },
+      transfers: {
+        userHitCost: 0,
+        rivalHitCost: 4,
+        userNetImpact: 10,
+        rivalNetImpact: 0,
+        delta: 10,
+      },
+      bench: {
+        userPointsOnBench: 11,
+        rivalPointsOnBench: 9,
+        delta: -2,
+      },
+    });
+  });
+
+  it("returns positional audit rows with spend efficiency and stable edge labels", () => {
+    const db = createDatabase(makeDbPath());
+    seedH2HComparisonData(db);
+
+    const service = new H2HQueryService(db);
+    const response = service.getH2HComparison(1, 99, 501);
+
+    expect(response.positionalAudit).toEqual({
+      rows: [
+        {
+          positionName: "Goalkeeper",
+          userPoints: 34,
+          rivalPoints: 31,
+          pointDelta: 3,
+          userSpend: 19.7,
+          rivalSpend: 19.7,
+          userValuePerMillion: 1.73,
+          rivalValuePerMillion: 1.57,
+          valueDelta: 0.16,
+          trend: "lead",
+        },
+        {
+          positionName: "Defender",
+          userPoints: 20,
+          rivalPoints: 20,
+          pointDelta: 0,
+          userSpend: 13,
+          rivalSpend: 13,
+          userValuePerMillion: 1.54,
+          rivalValuePerMillion: 1.54,
+          valueDelta: 0,
+          trend: "level",
+        },
+        {
+          positionName: "Midfielder",
+          userPoints: 41,
+          rivalPoints: 55,
+          pointDelta: -14,
+          userSpend: 24.6,
+          rivalSpend: 35.1,
+          userValuePerMillion: 1.67,
+          rivalValuePerMillion: 1.57,
+          valueDelta: 0.1,
+          trend: "trail",
+        },
+        {
+          positionName: "Forward",
+          userPoints: 37,
+          rivalPoints: 20,
+          pointDelta: 17,
+          userSpend: 26.7,
+          rivalSpend: 18.2,
+          userValuePerMillion: 1.39,
+          rivalValuePerMillion: 1.1,
+          valueDelta: 0.29,
+          trend: "lead",
+        },
+      ],
+    });
+  });
+
   it("returns syncRequired when rival comparison data has not been synced yet", () => {
     const db = createDatabase(makeDbPath());
     seedH2HComparisonData(db);
@@ -67,6 +158,8 @@ describe("H2HQueryService", () => {
       },
       squadOverlap: null,
       gmRankHistory: [],
+      attribution: null,
+      positionalAudit: null,
     });
   });
 });

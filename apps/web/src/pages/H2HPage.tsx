@@ -3,7 +3,16 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getH2HComparison } from "@/api/client";
 import { GlowCard } from "@/components/ui/glow-card";
-import { formatOverlapLabel, formatPlayerTag } from "./h2hPageUtils";
+import { Badge } from "@/components/ui/badge";
+import {
+  describeBenchDelta,
+  formatGapShare,
+  formatOverlapLabel,
+  formatPlayerTag,
+  formatSignedNumber,
+  formatSignedPoints,
+  getTrendLabel,
+} from "./h2hPageUtils";
 
 type AsyncState =
   | { status: "loading" }
@@ -29,6 +38,8 @@ export function H2HPage() {
           rivalEntry: null,
           squadOverlap: null,
           gmRankHistory: [],
+          attribution: null,
+          positionalAudit: null,
         },
       });
       return;
@@ -104,6 +115,8 @@ export function H2HPage() {
   }
 
   const { rivalEntry, squadOverlap, gmRankHistory } = state.payload;
+  const attribution = state.payload.attribution;
+  const positionalAudit = state.payload.positionalAudit;
 
   return (
     <div className="space-y-6 p-6">
@@ -166,6 +179,74 @@ export function H2HPage() {
           ))}
         </div>
       </GlowCard>
+
+      {attribution ? (
+        <GlowCard className="p-6">
+          <h2 className="font-display text-xl font-semibold text-white">Points attribution</h2>
+          <p className="mt-2 text-sm text-white/60">
+            Overall gap: {formatSignedPoints(attribution.totalPointDelta)}
+          </p>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            <section className="rounded-xl bg-white/5 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Captaincy swing</h3>
+              <p className="mt-2 text-lg font-semibold text-accent">
+                {formatSignedPoints(attribution.captaincy.delta)} · {formatGapShare(attribution.captaincy.shareOfGap)}
+              </p>
+              <p className="mt-2 text-sm text-white/70">
+                You: {attribution.captaincy.userPoints} · Rival: {attribution.captaincy.rivalPoints}
+              </p>
+            </section>
+
+            <section className="rounded-xl bg-white/5 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Transfer net impact</h3>
+              <p className="mt-2 text-lg font-semibold text-accent">{formatSignedPoints(attribution.transfers.delta)}</p>
+              <p className="mt-2 text-sm text-white/70">
+                You: {formatSignedNumber(attribution.transfers.userNetImpact)} · Rival: {attribution.transfers.rivalNetImpact}
+              </p>
+              <p className="mt-1 text-xs text-white/45">
+                Hits paid: You {attribution.transfers.userHitCost} · Rival {attribution.transfers.rivalHitCost}
+              </p>
+            </section>
+
+            <section className="rounded-xl bg-white/5 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Bench points stranded</h3>
+              <p className="mt-2 text-lg font-semibold text-accent">{describeBenchDelta(attribution.bench.delta)}</p>
+              <p className="mt-2 text-sm text-white/70">
+                You: {attribution.bench.userPointsOnBench} · Rival: {attribution.bench.rivalPointsOnBench}
+              </p>
+            </section>
+          </div>
+        </GlowCard>
+      ) : null}
+
+      {positionalAudit ? (
+        <GlowCard className="p-6">
+          <h2 className="font-display text-xl font-semibold text-white">Positional audit</h2>
+          <div className="mt-4 space-y-3">
+            {positionalAudit.rows.map((row) => (
+              <div key={row.positionName} className="rounded-xl bg-white/5 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">{row.positionName}</h3>
+                    <p className="mt-1 text-sm text-white/70">
+                      You {row.userPoints} pts vs Rival {row.rivalPoints} pts
+                    </p>
+                  </div>
+                  <Badge variant={row.trend === "trail" ? "under-index" : row.trend === "lead" ? "teal" : "outline"}>
+                    {getTrendLabel(row.trend)}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid gap-3 text-sm text-white/70 md:grid-cols-3">
+                  <p>Point delta: {formatSignedPoints(row.pointDelta)}</p>
+                  <p>Spend: £{row.userSpend.toFixed(1)}m vs £{row.rivalSpend.toFixed(1)}m</p>
+                  <p>Value per million: {row.userValuePerMillion.toFixed(2)} vs {row.rivalValuePerMillion.toFixed(2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlowCard>
+      ) : null}
     </div>
   );
 }

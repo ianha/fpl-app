@@ -294,7 +294,7 @@ Why this phase lands last:
 **Verification:**
 - A user can navigate from the app shell into a real H2H comparison page and see overlap/history for a chosen rival.
 
-- [ ] **Unit 4: Add points attribution breakdown**
+- [x] **Unit 4: Add points attribution breakdown**
 
 **Goal:** Explain point deltas through captaincy, transfer behavior, and bench usage.
 
@@ -329,7 +329,7 @@ Why this phase lands last:
 **Verification:**
 - The H2H page can explain a known points gap using attribution fields that reconcile with stored GW totals.
 
-- [ ] **Unit 5: Add positional audit and value-per-million comparison**
+- [x] **Unit 5: Add positional audit and value-per-million comparison**
 
 **Goal:** Show where each manager’s squad structure is outperforming or underperforming by position and spend efficiency.
 

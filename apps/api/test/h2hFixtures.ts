@@ -103,6 +103,21 @@ export function seedH2HComparisonData(db: ReturnType<typeof createDatabase>) {
     );
   }
 
+  insertPlayer.run(
+    33, 10033, "Udogie", "Destiny", "Udogie", 3, 2, 48, 98,
+    4.8, 7, 3.9, 2, 3, 8, 2100,
+    10, 280, 24, 30, 28, 27, 1.5, 2.6,
+    4.1, 0.5, 0.8, 1.3, 23, 0.32, 24,
+    28, 64, 44, "10033.jpg", 8, "a", now(),
+  );
+  insertPlayer.run(
+    34, 10034, "Gordon", "Anthony", "Gordon", 3, 3, 75, 165,
+    6.1, 16, 5.4, 11, 8, 5, 2550,
+    16, 410, 58, 75, 66, 64, 9.8, 6.7,
+    16.5, 1.2, 0.9, 2.1, 18, 0.19, 29,
+    12, 34, 19, "10034.jpg", 8, "a", now(),
+  );
+
   db.prepare(
     `INSERT INTO gameweeks (id, name, deadline_time, average_entry_score, highest_score, is_current, is_finished, updated_at)
      VALUES
@@ -144,15 +159,46 @@ export function seedH2HComparisonData(db: ReturnType<typeof createDatabase>) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
-  const sharedPlayerIds = [20, 21, 10, 11, 12, 24, 25, 26, 27, 28, 29, 30, 31, 32];
-  const gw1MyPicks = sharedPlayerIds.map((playerId, index) => [playerId, index + 1]).concat([[22, 15]]);
-  const gw2MyPicks = sharedPlayerIds.map((playerId, index) => [playerId, index + 1]).concat([[22, 15]]);
+  const gw1MyPicks = [
+    [20, 1, 1, 0, 0, 6],
+    [21, 2, 1, 0, 1, 7],
+    [10, 3, 1, 0, 0, 10],
+    [11, 4, 1, 0, 0, 5],
+    [12, 5, 1, 0, 0, 4],
+    [22, 6, 2, 1, 0, 8],
+    [24, 7, 1, 0, 0, 3],
+    [25, 8, 1, 0, 0, 2],
+    [26, 9, 1, 0, 0, 6],
+    [27, 10, 1, 0, 0, 4],
+    [28, 11, 1, 0, 0, 5],
+    [29, 12, 0, 0, 0, 2],
+    [30, 13, 0, 0, 0, 1],
+    [31, 14, 0, 0, 0, 1],
+    [32, 15, 0, 0, 0, 0],
+  ] as const;
+  const gw2MyPicks = [
+    [20, 1, 1, 0, 0, 4],
+    [21, 2, 1, 0, 1, 8],
+    [10, 3, 1, 0, 0, 9],
+    [11, 4, 1, 0, 0, 6],
+    [12, 5, 1, 0, 0, 5],
+    [22, 6, 2, 1, 0, 9],
+    [24, 7, 1, 0, 0, 4],
+    [25, 8, 1, 0, 0, 3],
+    [26, 9, 1, 0, 0, 7],
+    [27, 10, 1, 0, 0, 5],
+    [28, 11, 1, 0, 0, 12],
+    [29, 12, 0, 0, 0, 3],
+    [30, 13, 0, 0, 0, 2],
+    [31, 14, 0, 0, 0, 1],
+    [32, 15, 0, 0, 0, 1],
+  ] as const;
 
-  for (const [playerId, position] of gw1MyPicks) {
-    insertMyPick.run(1, 1, playerId, position, position === 1 ? 2 : position > 11 ? 0 : 1, position === 1 ? 1 : 0, position === 2 ? 1 : 0, 100, 100, position);
+  for (const [playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints] of gw1MyPicks) {
+    insertMyPick.run(1, 1, playerId, position, multiplier, isCaptain, isViceCaptain, 100, 100, gwPoints);
   }
-  for (const [playerId, position] of gw2MyPicks) {
-    insertMyPick.run(1, 2, playerId, position, position === 1 ? 2 : position > 11 ? 0 : 1, position === 1 ? 1 : 0, position === 2 ? 1 : 0, 100, 100, position);
+  for (const [playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints] of gw2MyPicks) {
+    insertMyPick.run(1, 2, playerId, position, multiplier, isCaptain, isViceCaptain, 100, 100, gwPoints);
   }
 
   db.prepare(
@@ -170,7 +216,7 @@ export function seedH2HComparisonData(db: ReturnType<typeof createDatabase>) {
     `INSERT INTO rival_gameweeks (
       entry_id, gameweek_id, points, total_points, overall_rank, rank, event_transfers, event_transfers_cost, points_on_bench, active_chip
     ) VALUES
-      (501, 1, 58, 58, 130000, 130000, 1, 4, 3, NULL),
+      (501, 1, 54, 54, 130000, 130000, 1, 4, 3, NULL),
       (501, 2, 68, 126, 98000, 98000, 0, 0, 6, NULL)`,
   ).run();
 
@@ -180,13 +226,45 @@ export function seedH2HComparisonData(db: ReturnType<typeof createDatabase>) {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
-  const gw1RivalPicks = sharedPlayerIds.map((playerId, index) => [playerId, index + 1]).concat([[23, 15]]);
-  const gw2RivalPicks = sharedPlayerIds.map((playerId, index) => [playerId, index + 1]).concat([[23, 15]]);
+  const gw1RivalPicks = [
+    [20, 1, 1, 0, 0, 3],
+    [21, 2, 1, 0, 1, 7],
+    [10, 3, 1, 0, 0, 10],
+    [11, 4, 1, 0, 0, 5],
+    [12, 5, 1, 0, 0, 4],
+    [23, 6, 2, 1, 0, 6],
+    [24, 7, 1, 0, 0, 3],
+    [25, 8, 1, 0, 0, 2],
+    [26, 9, 1, 0, 0, 6],
+    [27, 10, 1, 0, 0, 4],
+    [28, 11, 1, 0, 0, 4],
+    [29, 12, 0, 0, 0, 1],
+    [30, 13, 0, 0, 0, 1],
+    [31, 14, 0, 0, 0, 1],
+    [32, 15, 0, 0, 0, 0],
+  ] as const;
+  const gw2RivalPicks = [
+    [20, 1, 1, 0, 0, 2],
+    [21, 2, 1, 0, 1, 8],
+    [10, 3, 1, 0, 0, 9],
+    [11, 4, 1, 0, 0, 6],
+    [12, 5, 1, 0, 0, 5],
+    [23, 6, 2, 1, 0, 8],
+    [24, 7, 1, 0, 0, 4],
+    [25, 8, 1, 0, 0, 3],
+    [26, 9, 1, 0, 0, 7],
+    [27, 10, 1, 0, 0, 5],
+    [28, 11, 1, 0, 0, 15],
+    [29, 12, 0, 0, 0, 2],
+    [30, 13, 0, 0, 0, 2],
+    [31, 14, 0, 0, 0, 1],
+    [32, 15, 0, 0, 0, 1],
+  ] as const;
 
-  for (const [playerId, position] of gw1RivalPicks) {
-    insertRivalPick.run(501, 1, playerId, position, position === 1 ? 2 : position > 11 ? 0 : 1, position === 1 ? 1 : 0, position === 2 ? 1 : 0, position);
+  for (const [playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints] of gw1RivalPicks) {
+    insertRivalPick.run(501, 1, playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints);
   }
-  for (const [playerId, position] of gw2RivalPicks) {
-    insertRivalPick.run(501, 2, playerId, position, position === 1 ? 2 : position > 11 ? 0 : 1, position === 1 ? 1 : 0, position === 2 ? 1 : 0, position);
+  for (const [playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints] of gw2RivalPicks) {
+    insertRivalPick.run(501, 2, playerId, position, multiplier, isCaptain, isViceCaptain, gwPoints);
   }
 }

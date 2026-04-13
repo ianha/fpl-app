@@ -38,6 +38,67 @@ function buildPayload(overrides: Record<string, unknown> = {}) {
       { gameweek: 1, userOverallRank: 120000, rivalOverallRank: 130000 },
       { gameweek: 2, userOverallRank: 90000, rivalOverallRank: 98000 },
     ],
+    attribution: {
+      totalPointDelta: 6,
+      captaincy: {
+        userPoints: 17,
+        rivalPoints: 14,
+        delta: 3,
+        shareOfGap: 50,
+      },
+      transfers: {
+        userHitCost: 0,
+        rivalHitCost: 4,
+        userNetImpact: 10,
+        rivalNetImpact: 0,
+        delta: 10,
+      },
+      bench: {
+        userPointsOnBench: 11,
+        rivalPointsOnBench: 9,
+        delta: -2,
+      },
+    },
+    positionalAudit: {
+      rows: [
+        {
+          positionName: "Goalkeeper",
+          userPoints: 34,
+          rivalPoints: 31,
+          pointDelta: 3,
+          userSpend: 19.7,
+          rivalSpend: 19.7,
+          userValuePerMillion: 1.73,
+          rivalValuePerMillion: 1.57,
+          valueDelta: 0.16,
+          trend: "lead",
+        },
+        {
+          positionName: "Defender",
+          userPoints: 20,
+          rivalPoints: 20,
+          pointDelta: 0,
+          userSpend: 13,
+          rivalSpend: 13,
+          userValuePerMillion: 1.54,
+          rivalValuePerMillion: 1.54,
+          valueDelta: 0,
+          trend: "level",
+        },
+        {
+          positionName: "Midfielder",
+          userPoints: 41,
+          rivalPoints: 49,
+          pointDelta: -8,
+          userSpend: 24.6,
+          rivalSpend: 35.1,
+          userValuePerMillion: 1.67,
+          rivalValuePerMillion: 1.4,
+          valueDelta: 0.27,
+          trend: "trail",
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -73,12 +134,38 @@ describe("H2HPage", () => {
     expect(screen.getAllByText(/GW 2/i).length).toBeGreaterThan(0);
   });
 
+  it("renders points attribution and positional audit sections for a synced rival", async () => {
+    getH2HComparisonMock.mockResolvedValue(buildPayload());
+
+    renderH2HPage();
+
+    expect(await screen.findByRole("heading", { name: /Brad FC/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Points attribution/i })).toBeInTheDocument();
+    expect(screen.getByText(/Captaincy swing/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/\+3 pts/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/\+50\.0% of gap/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transfer net impact/i)).toBeInTheDocument();
+    expect(screen.getByText(/You: \+10 · Rival: 0/i)).toBeInTheDocument();
+    expect(screen.getByText(/Bench points stranded/i)).toBeInTheDocument();
+    expect(screen.getByText(/You left 2 more pts on the bench/i)).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { name: /Positional audit/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Goalkeeper$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Midfielder$/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/Lead/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Trail/i)).toBeInTheDocument();
+    expect(screen.getByText(/Level/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Defender[\s\S]*under-index/i)).not.toBeInTheDocument();
+  });
+
   it("shows a sync-required state instead of comparison sections when rival data is missing", async () => {
     getH2HComparisonMock.mockResolvedValue(
       buildPayload({
         syncRequired: true,
         squadOverlap: null,
         gmRankHistory: [],
+        attribution: null,
+        positionalAudit: null,
       }),
     );
 
