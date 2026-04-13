@@ -330,21 +330,22 @@ export function H2HPage() {
         <GlowCard className="p-6">
           <h2 className="font-display text-xl font-semibold text-white">Positional audit</h2>
           <div className="mt-3 space-y-1">
-            <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto] gap-x-6 px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-white/35">
+            <div className="hidden md:grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-6 px-4 pb-1 text-xs font-semibold uppercase tracking-wide text-white/35">
               <span>Position</span>
               <span className="w-24 text-right">Delta</span>
               <span className="w-32 text-right">Avg £/GW</span>
               <span className="w-28 text-right">Pts/£m</span>
+              <span className="w-16"></span>
             </div>
             {positionalAudit.rows.map((row) => (
               <div key={row.positionName} className="rounded-lg bg-white/5 px-4 py-2.5">
-                <div className="md:grid md:grid-cols-[1fr_auto_auto_auto] md:gap-x-6 md:items-center">
+                <div className="md:grid md:grid-cols-[1fr_auto_auto_auto_auto] md:gap-x-6 md:items-center">
                   <div className="flex items-center justify-between md:justify-start gap-2">
                     <div>
                       <span className="text-sm font-semibold text-white/80">{row.positionName}</span>
                       <span className="ml-2 text-xs text-white/45">{row.userPoints} vs {row.rivalPoints}</span>
                     </div>
-                    <Badge variant={row.trend === "trail" ? "under-index" : row.trend === "lead" ? "teal" : "outline"} className="md:hidden">
+                    <Badge variant={row.trend === "trail" ? "trail" : row.trend === "lead" ? "lead" : "outline"} className="md:hidden">
                       {getTrendLabel(row.trend)}
                     </Badge>
                   </div>
@@ -360,6 +361,11 @@ export function H2HPage() {
                     <span className={row.userValuePerMillion > row.rivalValuePerMillion ? "text-emerald-400" : row.userValuePerMillion < row.rivalValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.userValuePerMillion.toFixed(1)}</span>
                     <span className="text-white/30"> vs </span>
                     <span className={row.rivalValuePerMillion > row.userValuePerMillion ? "text-emerald-400" : row.rivalValuePerMillion < row.userValuePerMillion ? "text-rose-400" : "text-white/45"}>{row.rivalValuePerMillion.toFixed(1)}</span>
+                  </span>
+                  <span className="hidden md:flex w-16 justify-end">
+                    <Badge variant={row.trend === "trail" ? "trail" : row.trend === "lead" ? "lead" : "outline"}>
+                      {getTrendLabel(row.trend)}
+                    </Badge>
                   </span>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs md:hidden">

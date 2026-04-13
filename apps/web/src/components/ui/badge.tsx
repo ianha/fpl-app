@@ -23,6 +23,8 @@ const badgeVariants = cva(
           "border-transparent bg-accent/15 text-accent font-semibold",     // user underperforming xP — teal
         "under-index":
           "border-destructive/40 bg-destructive/10 text-destructive-foreground font-medium",
+        lead: "border-transparent bg-emerald-500/15 text-emerald-400 font-semibold",
+        trail: "border-transparent bg-rose-500/15 text-rose-400 font-semibold",
       },
     },
     defaultVariants: {
