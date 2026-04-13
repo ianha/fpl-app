@@ -296,4 +296,54 @@ CREATE TABLE IF NOT EXISTS my_team_sync_status (
   last_error TEXT,
   FOREIGN KEY(account_id) REFERENCES my_team_accounts(id)
 );
+
+CREATE TABLE IF NOT EXISTS rival_entries (
+  entry_id INTEGER PRIMARY KEY,
+  player_name TEXT NOT NULL,
+  team_name TEXT NOT NULL,
+  overall_rank INTEGER,
+  total_points INTEGER,
+  last_synced_gw INTEGER,
+  fetched_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rival_picks (
+  entry_id INTEGER NOT NULL,
+  gameweek_id INTEGER NOT NULL,
+  player_id INTEGER NOT NULL,
+  position INTEGER NOT NULL,
+  multiplier INTEGER NOT NULL DEFAULT 1,
+  is_captain INTEGER NOT NULL DEFAULT 0,
+  is_vice_captain INTEGER NOT NULL DEFAULT 0,
+  gw_points INTEGER,
+  PRIMARY KEY(entry_id, gameweek_id, position),
+  FOREIGN KEY(entry_id) REFERENCES rival_entries(entry_id),
+  FOREIGN KEY(player_id) REFERENCES players(id)
+);
+
+CREATE TABLE IF NOT EXISTS rival_gameweeks (
+  entry_id INTEGER NOT NULL,
+  gameweek_id INTEGER NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0,
+  total_points INTEGER NOT NULL DEFAULT 0,
+  overall_rank INTEGER NOT NULL DEFAULT 0,
+  rank INTEGER NOT NULL DEFAULT 0,
+  event_transfers INTEGER NOT NULL DEFAULT 0,
+  event_transfers_cost INTEGER NOT NULL DEFAULT 0,
+  points_on_bench INTEGER NOT NULL DEFAULT 0,
+  active_chip TEXT,
+  PRIMARY KEY(entry_id, gameweek_id),
+  FOREIGN KEY(entry_id) REFERENCES rival_entries(entry_id),
+  FOREIGN KEY(gameweek_id) REFERENCES gameweeks(id)
+);
+
+CREATE TABLE IF NOT EXISTS rival_leagues (
+  league_id INTEGER NOT NULL,
+  league_type TEXT NOT NULL,
+  league_name TEXT NOT NULL,
+  account_id INTEGER NOT NULL,
+  synced_at TEXT NOT NULL,
+  PRIMARY KEY(league_id, league_type, account_id),
+  FOREIGN KEY(account_id) REFERENCES my_team_accounts(id)
+);
 `;

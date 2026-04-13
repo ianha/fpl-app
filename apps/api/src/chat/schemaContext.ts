@@ -127,6 +127,41 @@ const COLUMN_ANNOTATIONS: Readonly<Record<string, Record<string, string>>> = {
     overall_rank:   "Final overall rank",
     rank:           "Final season rank",
   },
+  rival_entries: {
+    entry_id:        "Public FPL entry ID for a rival manager",
+    player_name:     "Manager display name from league standings",
+    team_name:       "Rival team name from league standings",
+    overall_rank:    "Latest known overall rank for the rival",
+    total_points:    "Latest known cumulative points for the rival",
+    last_synced_gw:  "Most recent gameweek successfully persisted for this rival",
+  },
+  rival_gameweeks: {
+    entry_id:             "References rival_entries.entry_id",
+    gameweek_id:          "References gameweeks.id",
+    points:               "Points scored in the gameweek",
+    total_points:         "Cumulative season total after this gameweek",
+    event_transfers:      "Number of transfers made in the gameweek",
+    event_transfers_cost: "Hit cost applied in the gameweek",
+    points_on_bench:      "Bench points left unused in the gameweek",
+    active_chip:          "Chip played that gameweek, if any",
+  },
+  rival_picks: {
+    entry_id:        "References rival_entries.entry_id",
+    gameweek_id:     "References gameweeks.id",
+    player_id:       "References players.id",
+    position:        "Slot 1–11 = starters, 12–15 = bench",
+    multiplier:      "Points multiplier for the pick",
+    is_captain:      "1 if this player was captain",
+    is_vice_captain: "1 if this player was vice-captain",
+    gw_points:       "Live or final points for this pick when available",
+  },
+  rival_leagues: {
+    league_id:   "FPL league identifier",
+    league_type: "classic or h2h",
+    league_name: "League display name returned by FPL",
+    account_id:  "References my_team_accounts.id for local ownership scoping",
+    synced_at:   "Last time the league standings were refreshed locally",
+  },
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────

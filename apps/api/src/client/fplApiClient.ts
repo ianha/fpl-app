@@ -125,6 +125,49 @@ type ElementSummaryResponse = {
   }>;
 };
 
+type LeagueStandingsResult = {
+  entry: number;
+  player_name: string;
+  entry_name: string;
+  rank: number;
+  total: number;
+};
+
+type LeagueStandingsResponse = {
+  league: {
+    id: number;
+    name: string;
+  };
+  standings: {
+    has_next: boolean;
+    results: LeagueStandingsResult[];
+  };
+};
+
+type PublicEntryHistoryResponse = {
+  current: Array<{
+    event: number;
+    points: number;
+    total_points: number;
+    overall_rank: number;
+    rank: number;
+    event_transfers: number;
+    event_transfers_cost: number;
+    points_on_bench: number;
+  }>;
+};
+
+type PublicEntryPicksResponse = {
+  active_chip: string | null;
+  picks: Array<{
+    element: number;
+    position: number;
+    multiplier: number;
+    is_captain: boolean;
+    is_vice_captain: boolean;
+  }>;
+};
+
 export class FplApiClient {
   private readonly rateLimiter: RequestRateLimiter;
 
@@ -151,6 +194,46 @@ export class FplApiClient {
       ),
     );
   }
+
+  async getClassicLeagueStandings(leagueId: number, page = 1) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<LeagueStandingsResponse>(
+        `${env.baseUrl}/leagues-classic/${leagueId}/standings/?page=${page}`,
+      ),
+    );
+  }
+
+  async getH2HLeagueStandings(leagueId: number, page = 1) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<LeagueStandingsResponse>(
+        `${env.baseUrl}/leagues-h2h/${leagueId}/standings/?page=${page}`,
+      ),
+    );
+  }
+
+  async getPublicEntryPicks(entryId: number, gameweekId: number) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<PublicEntryPicksResponse>(
+        `${env.baseUrl}/entry/${entryId}/event/${gameweekId}/picks/`,
+      ),
+    );
+  }
+
+  async getRivalEntryHistory(entryId: number) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<PublicEntryHistoryResponse>(
+        `${env.baseUrl}/entry/${entryId}/history/`,
+      ),
+    );
+  }
 }
 
-export type { BootstrapResponse, ElementSummaryResponse, FixturesResponse };
+export type {
+  BootstrapResponse,
+  ElementSummaryResponse,
+  FixturesResponse,
+  LeagueStandingsResponse,
+  LeagueStandingsResult,
+  PublicEntryHistoryResponse,
+  PublicEntryPicksResponse,
+};

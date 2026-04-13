@@ -293,6 +293,20 @@ export type CaptainRecommendation = {
   reasoning: string;
 };
 
+export type H2HLeagueStanding = {
+  entryId: number;
+  playerName: string;
+  teamName: string;
+  rank: number;
+  totalPoints: number;
+};
+
+export type RivalSyncResponse = {
+  entryId: number;
+  syncedGameweeks: number;
+  lastSyncedGw: number | null;
+};
+
 export type LivePlayerPoints = {
   playerId: number;
   minutes: number;

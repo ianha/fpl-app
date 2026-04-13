@@ -7,6 +7,7 @@ import type { LiveGwUpdate } from "@fpl/contracts";
 import { RecapCardService } from "../services/recapCardService.js";
 import { env } from "../config/env.js";
 import type { TransferDecisionHorizon } from "@fpl/contracts";
+import { RivalSyncService, type RivalLeagueType } from "../services/rivalSyncService.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -82,6 +83,7 @@ export function createApiRouter(db: AppDatabase) {
   const queryService = new QueryService(db);
   const myTeamSyncService = new MyTeamSyncService(db);
   const recapCardService = new RecapCardService(db);
+  const rivalSyncService = new RivalSyncService(db);
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -250,6 +252,76 @@ export function createApiRouter(db: AppDatabase) {
       res.json(queryService.getMyTeam());
     } catch (error) {
       res.status(400).json({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.get("/leagues/:leagueId/standings", async (req, res) => {
+    const leagueId = Number(req.params.leagueId);
+    const leagueType = req.query.type === "h2h" ? "h2h" : req.query.type === "classic" ? "classic" : null;
+    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
+
+    if (!Number.isInteger(leagueId) || leagueId <= 0) {
+      res.status(400).json({ message: "leagueId must be a positive integer" });
+      return;
+    }
+
+    if (!leagueType) {
+      res.status(400).json({ message: "type must be 'classic' or 'h2h'" });
+      return;
+    }
+
+    try {
+      const result = await rivalSyncService.syncLeagueStandings(
+        leagueId,
+        leagueType,
+        accountId,
+      );
+      res.json(result.standings);
+    } catch (error) {
+      res.status(502).json({
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  router.post("/leagues/:leagueId/sync", async (req, res) => {
+    const leagueId = Number(req.params.leagueId);
+    const { accountId, rivalEntryId, type } = req.body as {
+      accountId?: number;
+      rivalEntryId?: number;
+      type?: RivalLeagueType;
+      syncSecret?: string;
+    };
+
+    if (!Number.isInteger(leagueId) || leagueId <= 0) {
+      res.status(400).json({ message: "leagueId must be a positive integer" });
+      return;
+    }
+
+    if (!Number.isInteger(accountId) || !accountId || accountId <= 0) {
+      res.status(400).json({ message: "accountId must be a positive integer" });
+      return;
+    }
+
+    if (!Number.isInteger(rivalEntryId) || !rivalEntryId || rivalEntryId <= 0) {
+      res.status(400).json({ message: "rivalEntryId must be a positive integer" });
+      return;
+    }
+
+    const leagueType = type === "h2h" ? "h2h" : "classic";
+
+    try {
+      await rivalSyncService.syncLeagueStandings(leagueId, leagueType, accountId);
+      const result = await rivalSyncService.syncRivalOnDemand(
+        leagueId,
+        rivalEntryId,
+        accountId,
+      );
+      res.json(result);
+    } catch (error) {
+      res.status(502).json({
         message: error instanceof Error ? error.message : String(error),
       });
     }

@@ -186,7 +186,7 @@ Why this phase lands last:
 
 ## Implementation Units
 
-- [ ] **Unit 1: Build rival sync and persistence infrastructure**
+- [x] **Unit 1: Build rival sync and persistence infrastructure**
 
 **Goal:** Create the backend data model and sync flow that makes rival comparison possible.
 

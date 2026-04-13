@@ -111,6 +111,8 @@ export function createDatabase(dbPath = env.dbPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 5000");
   db.exec(schemaSql);
   migratePlayerHistoryPrimaryKey(db);
   ensureColumns(db, "players", [
@@ -235,6 +237,19 @@ export function createDatabase(dbPath = env.dbPath) {
   ensureColumns(db, "my_team_picks", [
     { name: "gw_points", sql: "gw_points INTEGER" },
   ]);
+  ensureColumns(db, "rival_entries", [
+    { name: "last_synced_gw", sql: "last_synced_gw INTEGER" },
+  ]);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_rival_picks_entry_gw
+      ON rival_picks(entry_id, gameweek_id);
+    CREATE INDEX IF NOT EXISTS idx_rival_picks_player_gw
+      ON rival_picks(player_id, gameweek_id);
+    CREATE INDEX IF NOT EXISTS idx_rival_gameweeks_entry_gw
+      ON rival_gameweeks(entry_id, gameweek_id);
+    CREATE INDEX IF NOT EXISTS idx_rival_leagues_account
+      ON rival_leagues(account_id);
+  `);
   backfillPlayerHistoryTeamId(db);
   backfillDerivedPerformanceColumns(db);
   return db;
