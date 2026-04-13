@@ -1,4 +1,10 @@
+import { webcrypto } from "node:crypto";
 import { env } from "../config/env.js";
+
+const FPL_CLIENT_ID = "bfcbaf69-aade-4c1b-8f00-c1cb8a193030";
+const FPL_AUTHORIZE_URL = "https://account.premierleague.com/as/authorize";
+const FPL_TOKEN_URL = "https://account.premierleague.com/as/token";
+const FPL_REDIRECT_URI = "https://fantasy.premierleague.com/";
 
 type CookieJar = Map<string, string>;
 
@@ -77,6 +83,14 @@ type TransferResponse = Array<{
   time: string;
 }>;
 
+function base64url(buffer: Uint8Array): string {
+  return Buffer.from(buffer)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
 function appendCookies(jar: CookieJar, response: Response) {
   const headers = "getSetCookie" in response.headers
     ? (response.headers as Headers & { getSetCookie(): string[] }).getSetCookie()
@@ -150,7 +164,7 @@ function describeNetworkError(error: unknown) {
     if (code === "ENOTFOUND") {
       return hostname
         ? `Could not resolve ${hostname}. Check DNS/VPN/network settings and try again.`
-        : "Could not resolve the FPL login host. Check DNS/VPN/network settings and try again.";
+        : "Could not resolve the FPL service host. Check DNS/VPN/network settings and try again.";
     }
 
     if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED") {
@@ -161,85 +175,134 @@ function describeNetworkError(error: unknown) {
   return null;
 }
 
+function extractEmailFromIdToken(idToken: string): string | null {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(idToken.split(".")[1], "base64url").toString("utf8"),
+    );
+    return typeof payload.email === "string" ? payload.email : null;
+  } catch {
+    return null;
+  }
+}
+
 export class FplSessionClient {
   private readonly cookies: CookieJar = new Map();
   private discoveredEntryId: number | null = null;
   private readonly diagnostics: string[] = [];
+  private accessToken: string | null = null;
+  private refreshToken: string | null = null;
 
   private addDiagnostic(label: string, value: string) {
     this.diagnostics.push(`${label}=${value}`);
   }
 
-  private async fetchWithCookies(url: string, init?: RequestInit) {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...init,
-        headers: {
-          ...(init?.headers ?? {}),
-          cookie: toCookieHeader(this.cookies),
-        },
-      });
-    } catch (error) {
-      throw new Error(describeNetworkError(error) ?? "Could not reach the FPL service.", { cause: error });
-    }
-    appendCookies(this.cookies, response);
-    this.discoveredEntryId ||= extractEntryIdFromUrl(response.url);
-    this.addDiagnostic("fetch-url", response.url);
-    return response;
+  // Build an OAuth 2.0 PKCE authorization URL for FPL login
+  static async buildAuthUrl(): Promise<{ authUrl: string; codeVerifier: string; state: string }> {
+    const codeVerifier = base64url(webcrypto.getRandomValues(new Uint8Array(32)));
+    const state = base64url(webcrypto.getRandomValues(new Uint8Array(16)));
+    const digest = await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+    const codeChallenge = base64url(new Uint8Array(digest));
+
+    const params = new URLSearchParams({
+      client_id: FPL_CLIENT_ID,
+      response_type: "code",
+      redirect_uri: FPL_REDIRECT_URI,
+      scope: "openid email",
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      state,
+    });
+
+    return { authUrl: `${FPL_AUTHORIZE_URL}?${params}`, codeVerifier, state };
   }
 
-  async login(email: string, password: string) {
+  // Exchange an authorization code for OAuth tokens
+  async loginWithCode(code: string, codeVerifier: string): Promise<{ accessToken: string; refreshToken?: string; email?: string }> {
     let response: Response;
     try {
-      response = await fetch("https://users.premierleague.com/accounts/login/", {
+      response = await fetch(FPL_TOKEN_URL, {
         method: "POST",
-        redirect: "manual",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "x-requested-with": "XMLHttpRequest",
-          origin: env.siteUrl,
-          referer: `${env.siteUrl}/`,
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          login: email,
-          password,
-          app: "plfpl-web",
-          redirect_uri: `${env.siteUrl}/a/login`,
+          grant_type: "authorization_code",
+          client_id: FPL_CLIENT_ID,
+          code,
+          redirect_uri: FPL_REDIRECT_URI,
+          code_verifier: codeVerifier,
         }),
       });
     } catch (error) {
-      throw new Error(describeNetworkError(error) ?? "Could not reach the FPL login service.", { cause: error });
+      throw new Error(
+        describeNetworkError(error) ?? "Could not reach the FPL authentication service.",
+        { cause: error },
+      );
     }
 
-    appendCookies(this.cookies, response);
-    this.discoveredEntryId ||= extractEntryIdFromUrl(response.url);
-    this.addDiagnostic("login-response-url", response.url);
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `FPL authentication failed (${response.status}). The login link may have expired — please try again.${body ? ` Details: ${body}` : ""}`.trim(),
+      );
+    }
 
-    let redirectCount = 0;
-    while (redirectCount < 6 && response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      if (!location) break;
-      this.discoveredEntryId ||= extractEntryIdFromUrl(location);
-       this.addDiagnostic("login-redirect-location", location);
-      const nextUrl = new URL(location, response.url).toString();
-      response = await this.fetchWithCookies(nextUrl, {
-        method: "GET",
-        redirect: "manual",
-        headers: {
-          referer: `${env.siteUrl}/`,
-          accept: "text/html,application/json",
-        },
+    const tokens = await response.json() as {
+      access_token: string;
+      refresh_token?: string;
+      id_token?: string;
+    };
+
+    this.accessToken = tokens.access_token;
+    this.refreshToken = tokens.refresh_token ?? null;
+
+    const email = tokens.id_token ? (extractEmailFromIdToken(tokens.id_token) ?? undefined) : undefined;
+
+    return { accessToken: tokens.access_token, refreshToken: tokens.refresh_token, email };
+  }
+
+  // Use a stored access token (and optional refresh token) for subsequent requests
+  loginWithAccessToken(accessToken: string, refreshToken?: string): void {
+    this.accessToken = accessToken;
+    this.refreshToken = refreshToken ?? null;
+  }
+
+  // Attempt to refresh an expired access token. Returns true if successful.
+  async tryRefreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+
+    try {
+      const response = await fetch(FPL_TOKEN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: FPL_CLIENT_ID,
+          refresh_token: this.refreshToken,
+        }),
       });
-      redirectCount += 1;
-    }
 
-    const body = await response.text();
-    this.addDiagnostic("login-body-signals", summarizeHtmlSignals(body).join(",") || "none");
+      if (!response.ok) return false;
 
-    if (!response.ok || /"success"\s*:\s*false/.test(body) || /"password"\s*:\s*\[/i.test(body)) {
-      throw new Error("FPL login failed. Check your email/password and try again.");
+      const tokens = await response.json() as { access_token: string; refresh_token?: string };
+      this.accessToken = tokens.access_token;
+      if (tokens.refresh_token) {
+        this.refreshToken = tokens.refresh_token;
+      }
+      return true;
+    } catch {
+      return false;
     }
+  }
+
+  getTokens(): { accessToken: string | null; refreshToken: string | null } {
+    return { accessToken: this.accessToken, refreshToken: this.refreshToken };
+  }
+
+  private getAuthHeader(): Record<string, string> {
+    if (this.accessToken) {
+      return { Authorization: `Bearer ${this.accessToken}` };
+    }
+    return { cookie: toCookieHeader(this.cookies) };
   }
 
   private async fetchJson<T>(url: string) {
@@ -247,7 +310,7 @@ export class FplSessionClient {
     try {
       response = await fetch(url, {
         headers: {
-          cookie: toCookieHeader(this.cookies),
+          ...this.getAuthHeader(),
           referer: `${env.siteUrl}/`,
           accept: "application/json",
         },
@@ -255,7 +318,9 @@ export class FplSessionClient {
     } catch (error) {
       throw new Error(describeNetworkError(error) ?? "Could not reach the FPL API.", { cause: error });
     }
-    appendCookies(this.cookies, response);
+    if (!this.accessToken) {
+      appendCookies(this.cookies, response);
+    }
     if (!response.ok) {
       throw new Error(`FPL request failed (${response.status}) for ${url}`);
     }
@@ -267,7 +332,7 @@ export class FplSessionClient {
     try {
       response = await fetch(url, {
         headers: {
-          cookie: toCookieHeader(this.cookies),
+          ...this.getAuthHeader(),
           referer: `${env.siteUrl}/`,
           accept: "text/html,application/json",
         },
@@ -275,7 +340,9 @@ export class FplSessionClient {
     } catch (error) {
       throw new Error(describeNetworkError(error) ?? "Could not reach the FPL site.", { cause: error });
     }
-    appendCookies(this.cookies, response);
+    if (!this.accessToken) {
+      appendCookies(this.cookies, response);
+    }
     if (!response.ok) {
       throw new Error(`FPL request failed (${response.status}) for ${url}`);
     }
@@ -287,7 +354,7 @@ export class FplSessionClient {
     try {
       response = await fetch(url, {
         headers: {
-          cookie: toCookieHeader(this.cookies),
+          ...this.getAuthHeader(),
           referer: `${env.siteUrl}/`,
           accept: "text/html,application/json",
         },
@@ -295,7 +362,9 @@ export class FplSessionClient {
     } catch (error) {
       throw new Error(describeNetworkError(error) ?? "Could not reach the FPL site.", { cause: error });
     }
-    appendCookies(this.cookies, response);
+    if (!this.accessToken) {
+      appendCookies(this.cookies, response);
+    }
     if (!response.ok) {
       throw new Error(`FPL request failed (${response.status}) for ${url}`);
     }

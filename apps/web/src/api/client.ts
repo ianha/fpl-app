@@ -144,10 +144,10 @@ export function getMyTeam(accountId?: number) {
   return request<MyTeamPageResponse>(`/my-team${q}`);
 }
 
-export function linkMyTeamAccount(email: string, password: string, entryId?: number) {
+export function linkMyTeamAccount(code: string, codeVerifier: string, entryId?: number) {
   return requestWithBody<MyTeamPageResponse>("/my-team/auth", "POST", {
-    email,
-    password,
+    code,
+    codeVerifier,
     ...(entryId ? { entryId } : {}),
   });
 }

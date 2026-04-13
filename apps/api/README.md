@@ -46,10 +46,15 @@ You can append flags directly behind the `--` separator to modify the behavior o
 **`npm run sync:my-team`** (Refreshes linked manager account queries)
 - `--gameweek <id>`: Fetch picks/scores for a specific GW.
 - `--account <id>`: Target an account via local database ID.
-- `--email <str>`: Target an account via login email.
+- `--email <str>`: Target an already linked account via login email.
+- `--username <str>`: Provide the FPL login username/email for a relink during sync.
+- `--password <str>`: Re-enter FPL credentials and relink before syncing.
+- `--entry-id <id>`: Entry ID to store while relinking through sync.
 - `--force`: Discard cached snapshots and pull fresh JSON.
 
 *Combinations:* You can combine flags freely, e.g. `npm run sync:my-team -- --email test@test.com --gameweek 29 --force`.
+If auth is expired or a relink is needed, the command now prompts for username, password, and entry ID interactively.
+To relink and sync in one step without prompts, run `npm run sync:my-team -- --username test@test.com --password hunter2 --entry-id 1234567`.
 
 ## Database Schema Highlights
 

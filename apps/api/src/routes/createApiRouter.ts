@@ -188,13 +188,13 @@ export function createApiRouter(db: AppDatabase) {
 
   router.post("/my-team/auth", async (req, res) => {
     try {
-      const { email, password, entryId } = req.body as {
-        email?: string;
-        password?: string;
+      const { code, codeVerifier, entryId } = req.body as {
+        code?: string;
+        codeVerifier?: string;
         entryId?: number | string;
       };
-      if (!email || !password) {
-        res.status(400).json({ message: "email and password are required" });
+      if (!code || !codeVerifier) {
+        res.status(400).json({ message: "code and codeVerifier are required" });
         return;
       }
 
@@ -207,7 +207,7 @@ export function createApiRouter(db: AppDatabase) {
         return;
       }
 
-      const accountId = myTeamSyncService.linkAccount(email, password, parsedEntryId);
+      const { accountId } = await myTeamSyncService.linkAccountWithCode(code, codeVerifier, parsedEntryId);
       await myTeamSyncService.syncAccount(accountId, true);
       res.status(201).json(queryService.getMyTeam(accountId));
     } catch (error) {

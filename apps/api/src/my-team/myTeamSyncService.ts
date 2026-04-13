@@ -23,6 +23,7 @@ function isAuthenticationError(error: unknown) {
     message.includes("FPL request failed (403)") ||
     message.includes("no FPL team entry ID") ||
     message.includes("can no longer be decrypted") ||
+    message.includes("deprecated format") ||
     // Node/undici TLS errors that occur when the FPL login server rejects the session
     message.includes("Unsupported state or unable to authenticate data") ||
     message.includes("SSL routines") ||
@@ -36,7 +37,7 @@ function normalizeSyncError(error: unknown) {
 
   if (message.includes("Unsupported state or unable to authenticate data")) {
     return new Error(
-      "Stored FPL credentials can no longer be decrypted. Re-enter your FPL password to relink this account.",
+      "Stored FPL credentials can no longer be decrypted. Re-run `sync:my-team` to re-authenticate.",
     );
   }
 
@@ -50,9 +51,28 @@ function safeRank(value: number | null | undefined) {
 export class MyTeamSyncService {
   constructor(private readonly db: AppDatabase) {}
 
-  linkAccount(email: string, password: string, entryId?: number) {
-    const encrypted = encryptCredentials({ email, password });
+  buildAuthUrl() {
+    return FplSessionClient.buildAuthUrl();
+  }
+
+  async linkAccountWithCode(code: string, codeVerifier: string, entryIdOverride?: number) {
+    const client = new FplSessionClient();
+    const { accessToken, refreshToken, email: tokenEmail } = await client.loginWithCode(code, codeVerifier);
+
+    // Get player info to resolve entryId and fallback email
+    const me = await client.getMe();
+
+    const email = tokenEmail ?? (me.player ? `player-${me.player.id}@fpl` : null);
+    if (!email) {
+      throw new Error(
+        "Could not determine your FPL account identifier. The OAuth response did not include an email address.",
+      );
+    }
+
+    const entryId = entryIdOverride ?? me.player?.entry ?? null;
+    const encrypted = encryptCredentials({ email, accessToken, refreshToken });
     const updatedAt = now();
+
     const result = this.db
       .prepare(
         `INSERT INTO my_team_accounts (email, encrypted_credentials, entry_id, updated_at)
@@ -69,7 +89,12 @@ export class MyTeamSyncService {
     const existing = this.db
       .prepare("SELECT id FROM my_team_accounts WHERE email = ?")
       .get(email) as { id: number };
-    return Number(result.lastInsertRowid || existing.id);
+
+    return {
+      accountId: Number(result.lastInsertRowid || existing.id),
+      email,
+      entryId,
+    };
   }
 
   getAccounts() {
@@ -127,8 +152,25 @@ export class MyTeamSyncService {
     try {
       const credentials = decryptCredentials(account.encryptedCredentials);
       const client = new FplSessionClient();
-      await client.login(credentials.email, credentials.password);
-      const me = await client.getMe();
+      client.loginWithAccessToken(credentials.accessToken, credentials.refreshToken);
+      let me = await client.getMe().catch(async (err: unknown) => {
+        // On 401, attempt a token refresh once before giving up
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("FPL request failed (401)") && await client.tryRefreshAccessToken()) {
+          const newTokens = client.getTokens();
+          const encrypted = encryptCredentials({
+            email: credentials.email,
+            accessToken: newTokens.accessToken!,
+            refreshToken: newTokens.refreshToken ?? undefined,
+          });
+          this.db
+            .prepare("UPDATE my_team_accounts SET encrypted_credentials = ? WHERE id = ?")
+            .run(encrypted, accountId);
+          return client.getMe();
+        }
+        throw err;
+      });
+      me = me as Awaited<ReturnType<typeof client.getMe>>;
       const entryId =
         me.player?.entry ??
         account.entryId ??

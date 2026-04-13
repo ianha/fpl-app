@@ -64,59 +64,162 @@ describe("fplSessionClient helpers", () => {
   });
 });
 
-describe("FplSessionClient", () => {
-  it("follows login redirects, preserves cookies, and caches discovered entry ids", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        createMockResponse({
-          status: 302,
-          url: "https://fantasy.premierleague.com/a/login",
-          headers: {
-            location: "/entry/321/event/1",
-          },
-          setCookies: ["pl_profile=abc; Path=/; HttpOnly"],
-        }),
-      )
-      .mockImplementationOnce(async (_url: string, init?: RequestInit) => {
-        expect((init?.headers as Record<string, string>)?.cookie).toBe("pl_profile=abc");
+describe("FplSessionClient.buildAuthUrl", () => {
+  it("returns a valid PKCE authorization URL with required params", async () => {
+    const { authUrl, codeVerifier, state } = await FplSessionClient.buildAuthUrl();
 
-        return createMockResponse({
-          body: "<html><script>window.__NEXT_DATA__={}</script></html>",
-          status: 200,
-          url: "https://fantasy.premierleague.com/entry/321/event/1",
-          setCookies: ["pl_session=xyz; Path=/; HttpOnly"],
-        });
-      });
+    const url = new URL(authUrl);
+    expect(url.hostname).toBe("account.premierleague.com");
+    expect(url.pathname).toBe("/as/authorize");
+    expect(url.searchParams.get("client_id")).toBe("bfcbaf69-aade-4c1b-8f00-c1cb8a193030");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("redirect_uri")).toBe("https://fantasy.premierleague.com/");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("code_challenge")).toBeTruthy();
+    expect(url.searchParams.get("state")).toBe(state);
 
-    vi.stubGlobal("fetch", fetchMock);
+    // codeVerifier is a base64url-encoded 32-byte value
+    expect(codeVerifier).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(codeVerifier.length).toBeGreaterThan(30);
 
-    const client = new FplSessionClient();
-    await client.login("manager@example.com", "correct-horse-battery-staple");
-
-    await expect(client.getEntryIdFromMyTeamPage()).resolves.toBe(321);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(client.getEntryResolutionDiagnostics()).toContain("login-redirect-location=/entry/321/event/1");
+    // Each call produces fresh PKCE params
+    const { codeVerifier: verifier2, state: state2 } = await FplSessionClient.buildAuthUrl();
+    expect(codeVerifier).not.toBe(verifier2);
+    expect(state).not.toBe(state2);
   });
+});
 
-  it("rejects invalid credentials with a stable error message", async () => {
+describe("FplSessionClient.loginWithCode", () => {
+  it("exchanges the authorization code for tokens and stores them", async () => {
+    // Build a minimal id_token JWT (unsigned, for testing)
+    const idPayload = btoa(JSON.stringify({ email: "manager@example.com", sub: "user-123" }));
+    const idToken = `header.${idPayload}.signature`;
+
     const fetchMock = vi.fn().mockResolvedValue(
       createMockResponse({
-        body: '{"success": false, "password": ["Invalid credentials"]}',
         status: 200,
-        url: "https://fantasy.premierleague.com/a/login",
+        url: "https://account.premierleague.com/as/token",
+        body: JSON.stringify({
+          access_token: "access-abc",
+          refresh_token: "refresh-xyz",
+          id_token: idToken,
+        }),
       }),
     );
-
     vi.stubGlobal("fetch", fetchMock);
 
     const client = new FplSessionClient();
+    const result = await client.loginWithCode("code-123", "verifier-abc");
 
-    await expect(client.login("manager@example.com", "wrong-password")).rejects.toThrow(
-      "FPL login failed. Check your email/password and try again.",
+    expect(result.accessToken).toBe("access-abc");
+    expect(result.refreshToken).toBe("refresh-xyz");
+    expect(result.email).toBe("manager@example.com");
+
+    // Token should be stored for subsequent requests
+    const tokens = client.getTokens();
+    expect(tokens.accessToken).toBe("access-abc");
+    expect(tokens.refreshToken).toBe("refresh-xyz");
+
+    // Verify request format
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://account.premierleague.com/as/token");
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get("grant_type")).toBe("authorization_code");
+    expect(body.get("code")).toBe("code-123");
+    expect(body.get("code_verifier")).toBe("verifier-abc");
+  });
+
+  it("throws a clear error when the token endpoint returns an error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      createMockResponse({
+        status: 400,
+        url: "https://account.premierleague.com/as/token",
+        body: JSON.stringify({ error: "invalid_grant", error_description: "Code expired" }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new FplSessionClient();
+    await expect(client.loginWithCode("expired-code", "verifier")).rejects.toThrow(
+      "FPL authentication failed (400)",
     );
   });
 
+  it("wraps network failures with a descriptive error", async () => {
+    const networkError = new Error("fetch failed", {
+      cause: { code: "ENOTFOUND", hostname: "account.premierleague.com" },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+
+    const client = new FplSessionClient();
+    await expect(client.loginWithCode("code", "verifier")).rejects.toThrow(
+      "Could not resolve account.premierleague.com",
+    );
+  });
+});
+
+describe("FplSessionClient.loginWithAccessToken", () => {
+  it("uses Bearer token in subsequent API requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        url: "https://fantasy.premierleague.com/api/me/",
+        body: JSON.stringify({ player: { entry: 321, id: 1, entry_name: "Test" } }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new FplSessionClient();
+    client.loginWithAccessToken("my-access-token", "my-refresh-token");
+    await client.getMe();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init?.headers as Record<string, string>;
+    expect(headers["Authorization"]).toBe("Bearer my-access-token");
+    expect(headers["cookie"]).toBeUndefined();
+  });
+});
+
+describe("FplSessionClient.tryRefreshAccessToken", () => {
+  it("refreshes the access token and updates stored tokens", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      createMockResponse({
+        status: 200,
+        url: "https://account.premierleague.com/as/token",
+        body: JSON.stringify({ access_token: "new-access", refresh_token: "new-refresh" }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new FplSessionClient();
+    client.loginWithAccessToken("old-access", "old-refresh");
+    const refreshed = await client.tryRefreshAccessToken();
+
+    expect(refreshed).toBe(true);
+    expect(client.getTokens().accessToken).toBe("new-access");
+    expect(client.getTokens().refreshToken).toBe("new-refresh");
+  });
+
+  it("returns false when no refresh token is available", async () => {
+    const client = new FplSessionClient();
+    client.loginWithAccessToken("access-token");
+    const refreshed = await client.tryRefreshAccessToken();
+    expect(refreshed).toBe(false);
+  });
+
+  it("returns false when the refresh endpoint rejects the token", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      createMockResponse({ status: 401, url: "https://account.premierleague.com/as/token" }),
+    ));
+
+    const client = new FplSessionClient();
+    client.loginWithAccessToken("access", "bad-refresh");
+    const refreshed = await client.tryRefreshAccessToken();
+    expect(refreshed).toBe(false);
+  });
+});
+
+describe("FplSessionClient.getEntryIdFromMyTeamPage", () => {
   it("discovers the entry id from authenticated HTML when /me omits it", async () => {
     const fetchMock = vi
       .fn()

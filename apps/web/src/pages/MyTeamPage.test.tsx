@@ -278,10 +278,7 @@ describe("MyTeamPage", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByLabelText(/Email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Entry ID \(optional\)/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Link and sync account/i })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /Open FPL Login/i })).toBeInTheDocument();
   });
 
   it("loads historical picks when a different gameweek is selected", async () => {
@@ -387,10 +384,38 @@ describe("MyTeamPage", () => {
     );
 
     expect(await screen.findByText(/needs to be relinked before the next sync/i)).toBeInTheDocument();
-    expect(screen.getByDisplayValue("ian@fpl.local")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Relink required/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Relink and sync/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open FPL Login/i })).toBeInTheDocument();
+  });
+
+  it("shows a product-update relink message when the legacy FPL login host is unavailable", async () => {
+    getMyTeamMock.mockResolvedValueOnce({
+      ...buildPayload(),
+      accounts: [
+        {
+          id: 1,
+          email: "ian@fpl.local",
+          entryId: 101,
+          managerName: "Ian Harper",
+          teamName: "Midnight Press FC",
+          authStatus: "relogin_required",
+          authError:
+            "The legacy FPL login host users.premierleague.com is unavailable. FPL credential sync needs an updated login flow in this app.",
+          lastAuthenticatedAt: "2026-03-20T12:00:00.000Z",
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <MyTeamPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/needs to be relinked before the next sync/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/This account needs to be relinked to sync fresh FPL data/i),
+    ).toBeInTheDocument();
   });
 
   it("renders the transfer decision workspace and switches horizons", async () => {

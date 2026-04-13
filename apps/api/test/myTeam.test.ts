@@ -4,6 +4,7 @@ import path from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabase } from "../src/db/database.js";
+import { encryptCredentials } from "../src/my-team/credentialStore.js";
 import { QueryService } from "../src/services/queryService.js";
 import { MyTeamSyncService } from "../src/my-team/myTeamSyncService.js";
 import { createApp } from "../src/app.js";
@@ -96,11 +97,14 @@ const sessionFixtures = vi.hoisted(() => ({
   },
 }));
 
-const loginMock = vi.fn(async () => undefined);
+const loginWithAccessTokenMock = vi.fn();
 
 vi.mock("../src/my-team/fplSessionClient.js", () => ({
   FplSessionClient: vi.fn().mockImplementation(() => ({
-    login: loginMock,
+    loginWithAccessToken: loginWithAccessTokenMock,
+    loginWithCode: vi.fn(async () => ({ accessToken: "test-token", refreshToken: "test-refresh", email: "ian@fpl.local" })),
+    tryRefreshAccessToken: vi.fn(async () => false),
+    getTokens: vi.fn(() => ({ accessToken: "test-token", refreshToken: "test-refresh" })),
     getMe: async () => sessionFixtures.me,
     getEntry: async () => sessionFixtures.entry,
     getEntryHistory: async () => sessionFixtures.history,
@@ -111,11 +115,23 @@ vi.mock("../src/my-team/fplSessionClient.js", () => ({
   })),
 }));
 
+// Helper to insert a test account directly into the DB with OAuth credentials
+function seedAccount(db: ReturnType<typeof createDatabase>, email = "ian@fpl.local") {
+  const encrypted = encryptCredentials({ email, accessToken: "test-access-token", refreshToken: "test-refresh-token" });
+  const result = db
+    .prepare(
+      `INSERT INTO my_team_accounts (email, encrypted_credentials, entry_id, updated_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(email, encrypted, null, new Date().toISOString());
+  return Number(result.lastInsertRowid);
+}
+
 let tempDir = "";
 
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fpl-my-team-"));
-  loginMock.mockClear();
+  loginWithAccessTokenMock.mockClear();
 });
 
 afterEach(() => {
@@ -218,8 +234,8 @@ describe("My Team sync", () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
 
+    const accountId = seedAccount(db);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
     const result = await service.syncAccount(accountId, true);
     const payload = new QueryService(db).getMyTeam(accountId);
 
@@ -229,7 +245,7 @@ describe("My Team sync", () => {
       syncedGameweeks: 1,
       currentGameweek: 7,
     });
-    expect(loginMock).toHaveBeenCalledWith("ian@fpl.local", "super-secret");
+    expect(loginWithAccessTokenMock).toHaveBeenCalledWith("test-access-token", "test-refresh-token");
     expect(payload).not.toBeNull();
     expect(payload?.managerName).toBe("Ian Harper");
     expect(payload?.teamName).toBe("Midnight Press FC");
@@ -247,7 +263,7 @@ describe("My Team sync", () => {
     const app = createApp(db);
     const response = await request(app)
       .post("/api/my-team/auth")
-      .send({ email: "ian@fpl.local", password: "super-secret" })
+      .send({ code: "auth-code-123", codeVerifier: "test-verifier-abc" })
       .expect(201);
 
     expect(response.body.teamName).toBe("Midnight Press FC");
@@ -259,26 +275,38 @@ describe("My Team sync", () => {
     expect(myTeam.body.picks[0].player.webName).toBe("Salah");
   });
 
-  it("marks the account as relogin-required when stored credentials stop working", async () => {
+  it("marks the account as relogin-required when the OAuth session expires", async () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
 
+    const accountId = seedAccount(db);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
     await service.syncAccount(accountId, true);
 
-    loginMock.mockRejectedValueOnce(
-      new Error("FPL login failed. Check your email/password and try again."),
-    );
+    // Simulate expired access token that fails and cannot be refreshed
+    const { FplSessionClient } = await import("../src/my-team/fplSessionClient.js");
+    vi.mocked(FplSessionClient).mockImplementationOnce(() => ({
+      loginWithAccessToken: vi.fn(),
+      loginWithCode: vi.fn(),
+      tryRefreshAccessToken: vi.fn(async () => false),
+      getTokens: vi.fn(() => ({ accessToken: null, refreshToken: null })),
+      getMe: vi.fn(async () => { throw new Error("FPL request failed (401) for /me/"); }),
+      getEntry: async () => sessionFixtures.entry,
+      getEntryHistory: async () => sessionFixtures.history,
+      getTransfers: async () => sessionFixtures.transfers,
+      getEventPicks: async () => sessionFixtures.picks,
+      getEntryIdFromMyTeamPage: async () => null,
+      getEntryResolutionDiagnostics: () => "none",
+    }) as any);
 
-    await expect(service.syncAccount(accountId, true)).rejects.toThrow("FPL login failed");
+    await expect(service.syncAccount(accountId, true)).rejects.toThrow("FPL request failed (401)");
 
     const accounts = service.getAccounts() as Array<{ id: number; authStatus: string; authError: string | null }>;
     const account = accounts.find((candidate) => candidate.id === accountId);
     const payload = new QueryService(db).getMyTeam(accountId);
 
     expect(account?.authStatus).toBe("relogin_required");
-    expect(account?.authError).toContain("FPL login failed");
+    expect(account?.authError).toContain("FPL request failed (401)");
     expect(payload?.picks[0]?.player.webName).toBe("Salah");
   });
 
@@ -286,8 +314,8 @@ describe("My Team sync", () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
 
+    const accountId = seedAccount(db);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
 
     const originalPlayer = sessionFixtures.me.player;
     sessionFixtures.me.player = null;
@@ -306,15 +334,18 @@ describe("My Team sync", () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
 
+    const accountId = seedAccount(db);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
 
     const originalPlayer = sessionFixtures.me.player;
     sessionFixtures.me.player = null;
 
-    const originalImplementation = vi.mocked(await import("../src/my-team/fplSessionClient.js")).FplSessionClient;
-    originalImplementation.mockImplementationOnce(() => ({
-      login: loginMock,
+    const { FplSessionClient } = await import("../src/my-team/fplSessionClient.js");
+    vi.mocked(FplSessionClient).mockImplementationOnce(() => ({
+      loginWithAccessToken: loginWithAccessTokenMock,
+      loginWithCode: vi.fn(),
+      tryRefreshAccessToken: vi.fn(async () => false),
+      getTokens: vi.fn(() => ({ accessToken: null, refreshToken: null })),
       getMe: async () => sessionFixtures.me,
       getEntry: async () => sessionFixtures.entry,
       getEntryHistory: async () => sessionFixtures.history,
@@ -340,7 +371,7 @@ describe("My Team sync", () => {
     const app = createApp(db);
     const response = await request(app)
       .post("/api/my-team/auth")
-      .send({ email: "ian@fpl.local", password: "super-secret", entryId: 321 })
+      .send({ code: "auth-code-123", codeVerifier: "test-verifier-abc", entryId: 321 })
       .expect(201);
 
     expect(response.body.accounts[0].entryId).toBe(321);
@@ -397,8 +428,8 @@ describe("My Team sync", () => {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
 
+    const accountId = seedAccount(db);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
 
     const originalCurrentRank = sessionFixtures.history.current[0].rank;
     const originalCurrentOverallRank = sessionFixtures.history.current[0].overall_rank;

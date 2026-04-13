@@ -3,7 +3,8 @@ import { env } from "../config/env.js";
 
 type StoredCredentials = {
   email: string;
-  password: string;
+  accessToken: string;
+  refreshToken?: string;
 };
 
 function getKey() {
@@ -44,7 +45,17 @@ export function decryptCredentials(payload: string): StoredCredentials {
     decipher.update(Buffer.from(parsed.ciphertext, "base64")),
     decipher.final(),
   ]).toString("utf8");
-  return JSON.parse(plaintext) as StoredCredentials;
+
+  const data = JSON.parse(plaintext) as Record<string, unknown>;
+
+  // Detect legacy password-based credentials (stored before OAuth migration)
+  if ("password" in data && !("accessToken" in data)) {
+    throw new Error(
+      "Stored FPL credentials use a deprecated format. Re-run `sync:my-team` to re-authenticate with the new FPL login flow.",
+    );
+  }
+
+  return data as StoredCredentials;
 }
 
 export type { StoredCredentials };

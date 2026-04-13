@@ -51,30 +51,26 @@ const POSITION_CONFIG: Record<number, { label: string; color: string }> = {
 
 function summarizeAuthError(error: string | null) {
   if (!error) {
-    return "Please re-enter your FPL password and try the sync again.";
+    return "Click 'Relink account' below to re-authenticate via FPL login.";
   }
 
   if (error.includes("no FPL team entry ID")) {
-    return "We could sign in, but FPL did not expose your team entry automatically. Add your current season entry ID below, then relink.";
-  }
-
-  if (error.includes("FPL login failed")) {
-    return "Your saved FPL password is no longer being accepted. Re-enter it below to relink this account.";
-  }
-
-  if (error.includes("can no longer be decrypted")) {
-    return "Your saved FPL password can no longer be decrypted on this device. Re-enter it below to relink this account.";
+    return "Login succeeded but FPL did not return your team entry. Add your entry ID below and relink.";
   }
 
   if (error.includes("FPL request failed (401)") || error.includes("FPL request failed (403)")) {
-    return "FPL rejected the authenticated session for this account. Re-enter your credentials and try again.";
+    return "Your FPL session has expired. Relink your account to restore sync access.";
+  }
+
+  if (error.includes("deprecated format") || error.includes("can no longer be decrypted")) {
+    return "Your stored credentials use an older format. Click 'Relink account' to re-authenticate.";
   }
 
   if (error.includes("Could not resolve") || error.includes("Could not reach")) {
-    return "This device cannot currently reach the FPL login service. Check your DNS, VPN, proxy, or firewall settings, then try again.";
+    return "This device cannot currently reach the FPL service. Check your network settings, then try again.";
   }
 
-  return "This account needs to be relinked before it can sync fresh FPL data.";
+  return "This account needs to be relinked to sync fresh FPL data.";
 }
 
 function toSquadEntry(pick: MyTeamPick): SquadEntry {
@@ -268,68 +264,106 @@ function PitchPlayerCard({
   );
 }
 
-function MyTeamCredentialsForm({
-  email,
-  password,
+const FPL_OAUTH_CLIENT_ID = "bfcbaf69-aade-4c1b-8f00-c1cb8a193030";
+const FPL_OAUTH_REDIRECT_URI = "https://fantasy.premierleague.com/";
+
+async function buildFplAuthUrl(): Promise<{ authUrl: string; codeVerifier: string }> {
+  function b64url(buf: Uint8Array) {
+    return btoa(String.fromCharCode(...buf)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  }
+  const codeVerifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+  const codeChallenge = b64url(new Uint8Array(digest));
+  const params = new URLSearchParams({
+    client_id: FPL_OAUTH_CLIENT_ID,
+    response_type: "code",
+    redirect_uri: FPL_OAUTH_REDIRECT_URI,
+    scope: "openid email",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state,
+  });
+  return { authUrl: `https://account.premierleague.com/as/authorize?${params}`, codeVerifier };
+}
+
+function MyTeamOauthForm({
+  oauthSession,
+  redirectUrlInput,
   entryIdInput,
   submitting,
   submitLabel,
   labelClassName = "mb-2 block text-[11px] uppercase tracking-[0.18em] text-white/45",
   inputClassName,
-  onEmailChange,
-  onPasswordChange,
+  onStartOauth,
+  onRedirectUrlChange,
   onEntryIdChange,
   onSubmit,
 }: {
-  email: string;
-  password: string;
+  oauthSession: { authUrl: string; codeVerifier: string } | null;
+  redirectUrlInput: string;
   entryIdInput: string;
   submitting: boolean;
   submitLabel: string;
   labelClassName?: string;
   inputClassName?: string;
-  onEmailChange: (value: string) => void;
-  onPasswordChange: (value: string) => void;
+  onStartOauth: () => void;
+  onRedirectUrlChange: (value: string) => void;
   onEntryIdChange: (value: string) => void;
   onSubmit: () => void;
 }) {
   return (
     <div className="grid gap-4">
       <div>
-        <label className={labelClassName}>Email</label>
-        <Input
-          aria-label="Email"
-          value={email}
-          onChange={(event) => onEmailChange(event.target.value)}
-          placeholder="you@example.com"
-          className={cn("min-h-11 border-white/10 bg-white/5", inputClassName)}
-        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={submitting}
+          onClick={onStartOauth}
+          className={cn("min-h-11 w-full border-white/10 bg-white/5 text-white hover:bg-white/10", inputClassName && "border-amber-200/20 bg-black/20")}
+        >
+          <ExternalLink className="mr-2 h-4 w-4" />
+          {oauthSession ? "Restart FPL Login" : "Open FPL Login"}
+        </Button>
+        {oauthSession && (
+          <p className="mt-2 text-[11px] text-white/50">
+            A browser tab opened for FPL login. After signing in, copy the URL from your browser's address bar and paste it below.
+          </p>
+        )}
       </div>
-      <div>
-        <label className={labelClassName}>Password</label>
-        <Input
-          aria-label="Password"
-          type="password"
-          value={password}
-          onChange={(event) => onPasswordChange(event.target.value)}
-          placeholder="FPL password"
-          className={cn("min-h-11 border-white/10 bg-white/5", inputClassName)}
-        />
-      </div>
-      <div>
-        <label className={labelClassName}>Entry ID (optional)</label>
-        <Input
-          aria-label="Entry ID (optional)"
-          inputMode="numeric"
-          value={entryIdInput}
-          onChange={(event) => onEntryIdChange(event.target.value.replace(/[^\d]/g, ""))}
-          placeholder="Current season team entry ID"
-          className={cn("min-h-11 border-white/10 bg-white/5", inputClassName)}
-        />
-      </div>
-      <Button type="button" disabled={submitting || !email || !password} onClick={onSubmit} className="min-h-11">
-        {submitting ? `${submitLabel}…` : submitLabel}
-      </Button>
+      {oauthSession && (
+        <>
+          <div>
+            <label className={labelClassName}>Redirect URL (from browser after login)</label>
+            <Input
+              aria-label="Redirect URL"
+              value={redirectUrlInput}
+              onChange={(event) => onRedirectUrlChange(event.target.value)}
+              placeholder="https://fantasy.premierleague.com/?code=..."
+              className={cn("min-h-11 border-white/10 bg-white/5", inputClassName)}
+            />
+          </div>
+          <div>
+            <label className={labelClassName}>Entry ID (optional)</label>
+            <Input
+              aria-label="Entry ID (optional)"
+              inputMode="numeric"
+              value={entryIdInput}
+              onChange={(event) => onEntryIdChange(event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Current season team entry ID"
+              className={cn("min-h-11 border-white/10 bg-white/5", inputClassName)}
+            />
+          </div>
+          <Button
+            type="button"
+            disabled={submitting || !redirectUrlInput.trim()}
+            onClick={onSubmit}
+            className="min-h-11"
+          >
+            {submitting ? `${submitLabel}…` : submitLabel}
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -348,7 +382,8 @@ export function MyTeamPage() {
     () => initialAccountId ?? initialCache?.selectedAccountId ?? null,
   );
   const [email, setEmail] = useState(() => initialCache?.email ?? "");
-  const [password, setPassword] = useState("");
+  const [oauthSession, setOauthSession] = useState<{ authUrl: string; codeVerifier: string } | null>(null);
+  const [redirectUrlInput, setRedirectUrlInput] = useState("");
   const [entryIdInput, setEntryIdInput] = useState(() => initialCache?.entryIdInput ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [viewGameweek, setViewGameweek] = useState<number | null>(
@@ -435,15 +470,40 @@ export function MyTeamPage() {
   }, [color]);
   const backgroundImage = useMotionTemplate`radial-gradient(125% 125% at 50% 0%, #0d0118 50%, ${color})`;
 
-  async function submitAccountCredentials(emailValue: string, passwordValue: string, entryIdValue?: string) {
+  async function startOauthSession() {
+    try {
+      const session = await buildFplAuthUrl();
+      setOauthSession(session);
+      setRedirectUrlInput("");
+      window.open(session.authUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setState({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function submitOauthCode(redirectUrl: string, entryIdValue?: string) {
+    if (!oauthSession) return;
     setSubmitting(true);
     try {
-      const parsedEntryId =
-        entryIdValue && entryIdValue.trim()
-          ? Number(entryIdValue.trim())
-          : undefined;
-      await linkMyTeamAccount(emailValue, passwordValue, parsedEntryId);
-      setPassword("");
+      let code: string;
+      try {
+        const parsed = new URL(redirectUrl.trim());
+        const extracted = parsed.searchParams.get("code");
+        if (!extracted) {
+          throw new Error("No authorization code found in that URL. Make sure you pasted the full redirect URL (it should contain '?code=...').");
+        }
+        code = extracted;
+      } catch (err) {
+        throw err instanceof Error && err.message.includes("authorization code") ? err : new Error("That doesn't look like a valid URL. Paste the full URL from your browser's address bar.");
+      }
+
+      const parsedEntryId = entryIdValue?.trim() ? Number(entryIdValue.trim()) : undefined;
+      await linkMyTeamAccount(code, oauthSession.codeVerifier, parsedEntryId);
+      setOauthSession(null);
+      setRedirectUrlInput("");
       await load(selectedAccountId ?? undefined, true);
     } catch (error) {
       setState({
@@ -691,20 +751,20 @@ export function MyTeamPage() {
               Link your real FPL account
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">
-              Enter the same FPL email and password you use on the official website. If FPL blocks automatic entry detection, add your current season entry ID too.
+              Click below to open the official FPL login page. After signing in, paste the redirect URL back here to complete linking.
             </p>
 
             <div className="mt-6">
-              <MyTeamCredentialsForm
-                email={email}
-                password={password}
+              <MyTeamOauthForm
+                oauthSession={oauthSession}
+                redirectUrlInput={redirectUrlInput}
                 entryIdInput={entryIdInput}
                 submitting={submitting}
                 submitLabel="Link and sync account"
-                onEmailChange={setEmail}
-                onPasswordChange={setPassword}
+                onStartOauth={startOauthSession}
+                onRedirectUrlChange={setRedirectUrlInput}
                 onEntryIdChange={setEntryIdInput}
-                onSubmit={() => submitAccountCredentials(email, password, entryIdInput)}
+                onSubmit={() => submitOauthCode(redirectUrlInput, entryIdInput)}
               />
             </div>
           </GlowCard>
@@ -800,27 +860,24 @@ export function MyTeamPage() {
                   <div className="space-y-2">
                     <div className="font-semibold">This account needs to be relinked before the next sync.</div>
                     <p className="leading-6 text-amber-50/85">
-                      Your last synced team is still visible, but fresh FPL data is blocked until you re-enter the account password.
+                      Your last synced team is still visible, but fresh FPL data is blocked until you re-authenticate.
                     </p>
                     <p className="leading-6 text-amber-50/85">{relinkMessage}</p>
-                    <p className="leading-6 text-amber-50/75">
-                      If automatic entry lookup is being blocked, add your current season entry ID below before relinking.
-                    </p>
                   </div>
                 </div>
                 <div className="mt-4">
-                  <MyTeamCredentialsForm
-                    email={email}
-                    password={password}
+                  <MyTeamOauthForm
+                    oauthSession={oauthSession}
+                    redirectUrlInput={redirectUrlInput}
                     entryIdInput={entryIdInput}
                     submitting={submitting}
                     submitLabel="Relink and sync"
                     labelClassName="mb-2 block text-[11px] uppercase tracking-[0.18em] text-amber-100/75"
                     inputClassName="border-amber-200/20 bg-black/20"
-                    onEmailChange={setEmail}
-                    onPasswordChange={setPassword}
+                    onStartOauth={startOauthSession}
+                    onRedirectUrlChange={setRedirectUrlInput}
                     onEntryIdChange={setEntryIdInput}
-                    onSubmit={() => submitAccountCredentials(email, password, entryIdInput)}
+                    onSubmit={() => submitOauthCode(redirectUrlInput, entryIdInput)}
                   />
                 </div>
               </div>

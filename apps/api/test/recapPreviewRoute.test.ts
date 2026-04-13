@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "../src/config/env.js";
 import { createDatabase } from "../src/db/database.js";
+import { encryptCredentials } from "../src/my-team/credentialStore.js";
 import { MyTeamSyncService } from "../src/my-team/myTeamSyncService.js";
 import { createApp } from "../src/app.js";
 import { seedPublicData } from "./myTeamFixtures.js";
@@ -15,7 +16,9 @@ vi.hoisted(() => {
 
 vi.mock("../src/my-team/fplSessionClient.js", () => ({
   FplSessionClient: vi.fn().mockImplementation(() => ({
-    login: vi.fn(async () => undefined),
+    loginWithAccessToken: vi.fn(),
+    tryRefreshAccessToken: vi.fn(async () => false),
+    getTokens: vi.fn(() => ({ accessToken: null, refreshToken: null })),
     getMe: async () => ({ player: { id: 77, entry: 321, entry_name: "Midnight Press FC" } }),
     getEntry: async () => ({
       player_first_name: "Ian",
@@ -94,8 +97,16 @@ describe("GET /api/my-team/:accountId/recap/:gw/preview", () => {
   async function setupDb() {
     const db = createDatabase(path.join(tempDir, "test.sqlite"));
     seedPublicData(db);
+    // Insert a test account directly with OAuth token credentials
+    const encrypted = encryptCredentials({ email: "ian@fpl.local", accessToken: "test-access-token" });
+    const result = db
+      .prepare(
+        `INSERT INTO my_team_accounts (email, encrypted_credentials, entry_id, updated_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run("ian@fpl.local", encrypted, null, new Date().toISOString());
+    const accountId = Number(result.lastInsertRowid);
     const service = new MyTeamSyncService(db);
-    const accountId = service.linkAccount("ian@fpl.local", "super-secret");
     await service.syncAccount(accountId, true);
     return { db, accountId };
   }
