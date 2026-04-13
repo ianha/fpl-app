@@ -4,6 +4,7 @@ import path from "node:path";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
+import { env } from "../src/config/env.js";
 import { createDatabase } from "../src/db/database.js";
 import { seedH2HComparisonData } from "./h2hFixtures.js";
 import { now, seedPublicData } from "./myTeamFixtures.js";
@@ -42,6 +43,7 @@ function seedPhaseOneData(db: ReturnType<typeof createDatabase>) {
 
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fpl-rival-routes-"));
+  env.fplMinRequestIntervalMs = 0;
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
     const url = String(input);
 
@@ -113,6 +115,26 @@ beforeEach(() => {
           { element: 11, position: 1, multiplier: 2, is_captain: true, is_vice_captain: false },
           { element: 10, position: 12, multiplier: 0, is_captain: false, is_vice_captain: true },
         ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    if (url.match(/\/event\/\d+\/live\//)) {
+      return new Response(JSON.stringify({
+        elements: [
+          { id: 10, stats: { total_points: 8 } },
+          { id: 11, stats: { total_points: 7 } },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    if (url.endsWith("/entry/501/")) {
+      return new Response(JSON.stringify({
+        id: 501,
+        player_first_name: "Brad",
+        player_last_name: "B",
+        name: "Brad FC",
+        summary_overall_rank: 1,
+        summary_overall_points: 130,
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
 

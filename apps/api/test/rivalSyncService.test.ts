@@ -116,6 +116,12 @@ describe("RivalSyncService", () => {
     seedPhaseOneData(db);
 
     const client = {
+      getEventLive: vi.fn().mockResolvedValue({
+        elements: [
+          { id: 10, stats: { total_points: 8 } },
+          { id: 11, stats: { total_points: 7 } },
+        ],
+      }),
       getRivalEntryHistory: vi.fn().mockResolvedValue({
         current: [
           {

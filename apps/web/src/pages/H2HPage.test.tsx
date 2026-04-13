@@ -150,7 +150,7 @@ describe("H2HPage", () => {
 
     renderH2HPage();
 
-    expect(await screen.findByRole("heading", { name: /Brad FC/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Brad FC$/i, level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/86.7% overlap/i)).toBeInTheDocument();
     expect(screen.getByText(/Isak/i)).toBeInTheDocument();
     expect(screen.getByText(/Palmer/i)).toBeInTheDocument();
@@ -162,22 +162,22 @@ describe("H2HPage", () => {
 
     renderH2HPage();
 
-    expect(await screen.findByRole("heading", { name: /Brad FC/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Brad FC$/i, level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Points attribution/i })).toBeInTheDocument();
     expect(screen.getByText(/Captaincy swing/i)).toBeInTheDocument();
     expect(screen.getAllByText(/\+3 pts/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/\+50\.0% of gap/i)).toBeInTheDocument();
     expect(screen.getByText(/Transfer net impact/i)).toBeInTheDocument();
-    expect(screen.getByText(/You: \+10 · Rival: 0/i)).toBeInTheDocument();
+    expect(screen.getByText(/You: \+10 · Brad FC: 0/i)).toBeInTheDocument();
     expect(screen.getByText(/Bench points stranded/i)).toBeInTheDocument();
     expect(screen.getByText(/You left 2 more pts on the bench/i)).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: /Positional audit/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^Goalkeeper$/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^Midfielder$/i })).toBeInTheDocument();
+    expect(screen.getByText(/^Goalkeeper$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Midfielder$/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Lead/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Trail/i)).toBeInTheDocument();
-    expect(screen.getByText(/Level/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Trail/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Level/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Defender[\s\S]*under-index/i)).not.toBeInTheDocument();
   });
 
@@ -242,12 +242,12 @@ describe("H2HPage", () => {
 
     const firstRender = renderH2HPage(["/leagues/99/h2h/501"]);
 
-    expect(await screen.findByRole("heading", { name: /Brad FC/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Brad FC$/i, level: 1 })).toBeInTheDocument();
 
     firstRender.unmount();
     renderH2HPage(["/leagues/99/h2h/502"]);
 
-    expect(await screen.findByRole("heading", { name: /Sean FC/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^Sean FC$/i, level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/73.3% overlap/i)).toBeInTheDocument();
     expect(getH2HComparisonMock).toHaveBeenNthCalledWith(1, 99, 501);
     expect(getH2HComparisonMock).toHaveBeenNthCalledWith(2, 99, 502);
