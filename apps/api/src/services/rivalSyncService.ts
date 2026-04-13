@@ -95,11 +95,35 @@ export class RivalSyncService {
     };
   }
 
+  private async ensureRivalEntry(entryId: number) {
+    const existing = this.db
+      .prepare(`SELECT 1 FROM rival_entries WHERE entry_id = ?`)
+      .get(entryId);
+    if (existing) return;
+
+    const info = await this.client.getEntryInfo(entryId);
+    this.db
+      .prepare(
+        `INSERT INTO rival_entries (entry_id, player_name, team_name, overall_rank, total_points, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(entry_id) DO NOTHING`,
+      )
+      .run(
+        entryId,
+        `${info.player_first_name} ${info.player_last_name}`,
+        info.name,
+        info.summary_overall_rank,
+        info.summary_overall_points,
+        now(),
+      );
+  }
+
   async syncRivalOnDemand(
     _leagueId: number,
     entryId: number,
     _accountId: number,
   ) {
+    await this.ensureRivalEntry(entryId);
     const history = await this.client.getRivalEntryHistory(entryId);
     const relevantGameweeks = history.current.filter((row) => row.event > 0);
 
@@ -133,7 +157,12 @@ export class RivalSyncService {
     );
 
     for (const gameweek of relevantGameweeks) {
-      const picks = await this.client.getPublicEntryPicks(entryId, gameweek.event);
+      const [picks, live] = await Promise.all([
+        this.client.getPublicEntryPicks(entryId, gameweek.event),
+        this.client.getEventLive(gameweek.event),
+      ]);
+      const pointsByPlayer = new Map(live.elements.map((el) => [el.id, el.stats.total_points]));
+
       this.db.transaction(() => {
         upsertGameweek.run(
           entryId,
@@ -157,7 +186,7 @@ export class RivalSyncService {
             pick.multiplier,
             toSqliteBoolean(pick.is_captain),
             toSqliteBoolean(pick.is_vice_captain),
-            null,
+            pointsByPlayer.get(pick.element) ?? null,
           );
         }
         updateProgress.run(gameweek.event, now(), entryId);

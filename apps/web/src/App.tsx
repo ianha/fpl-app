@@ -8,6 +8,7 @@ import { FDRPage } from "@/pages/FDRPage";
 import { TeamDetailPage } from "@/pages/TeamDetailPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { H2HPage } from "@/pages/H2HPage";
+import { LeagueHubPage } from "@/pages/LeagueHubPage";
 import { MyTeamPage } from "@/pages/MyTeamPage";
 
 export default function App() {
@@ -23,7 +24,7 @@ export default function App() {
           <Route path="/fixtures/fdr" element={<FDRPage />} />
           <Route path="/teams/:id" element={<TeamDetailPage />} />
           <Route path="/my-team" element={<MyTeamPage />} />
-          <Route path="/leagues" element={<H2HPage />} />
+          <Route path="/leagues" element={<LeagueHubPage />} />
           <Route path="/leagues/:leagueId/h2h/:rivalEntryId" element={<H2HPage />} />
           <Route path="/chat" element={<ChatPage />} />
         </Routes>

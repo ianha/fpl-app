@@ -3,7 +3,9 @@ import type {
   FdrRow,
   GwCalendarRow,
   H2HComparisonResponse,
+  H2HLeagueStanding,
   LiveGwUpdate,
+  MyLeague,
   OverviewResponse,
   PlayerCard,
   PlayerDetail,
@@ -205,6 +207,21 @@ export function getTransferDecision(
       null,
     options: response.options ?? [],
   }));
+}
+
+export function getMyLeagues(accountId?: number) {
+  const q = accountId ? `?accountId=${accountId}` : "";
+  return request<MyLeague[]>(`/my-team/leagues${q}`);
+}
+
+export function discoverMyLeagues(accountId?: number) {
+  return requestWithBody<MyLeague[]>("/my-team/leagues/discover", "POST", accountId ? { accountId } : {});
+}
+
+export function getLeagueStandings(leagueId: number, type: "classic" | "h2h", accountId?: number) {
+  const p = new URLSearchParams({ type });
+  if (accountId) p.set("accountId", String(accountId));
+  return request<H2HLeagueStanding[]>(`/leagues/${leagueId}/standings?${p.toString()}`);
 }
 
 export function getLiveGwSnapshot(gw: number) {

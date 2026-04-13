@@ -479,16 +479,19 @@ export class H2HQueryService {
     if (rows.length === 0) {
       return new Map<string, number>();
     }
+    const gwTable = tableName === "my_team_picks" ? "my_team_gameweeks" : "rival_gameweeks";
     const placeholders = rows.map(() => "?").join(", ");
     const result = this.db
       .prepare(
-        `SELECT pos.name AS positionName, SUM(p.gw_points) AS totalPoints
+        `SELECT pos.name AS positionName, SUM(p.gw_points * p.multiplier) AS totalPoints
          FROM ${tableName} p
          INNER JOIN players pl ON pl.id = p.player_id
          INNER JOIN positions pos ON pos.id = pl.position_id
+         LEFT JOIN ${gwTable} g ON g.${ownerColumn} = p.${ownerColumn}
+           AND g.gameweek_id = p.gameweek_id
          WHERE p.${ownerColumn} = ?
            AND p.gameweek_id IN (${placeholders})
-           AND p.position <= 11
+           AND (p.position <= 11 OR g.active_chip = 'bboost')
          GROUP BY pos.name
          ORDER BY pos.id`,
       )

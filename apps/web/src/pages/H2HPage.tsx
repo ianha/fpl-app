@@ -23,6 +23,19 @@ type AsyncState =
   | { status: "error"; message: string }
   | { status: "ready"; payload: H2HComparisonResponse };
 
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <span className="relative group ml-1.5 inline-flex align-middle">
+      <svg className="h-3.5 w-3.5 cursor-help text-white/35" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+      </svg>
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-lg border border-white/10 bg-gray-900 px-3 py-2.5 text-xs leading-relaxed text-white/80 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+        {text}
+      </span>
+    </span>
+  );
+}
+
 const _h2hCache = new Map<string, H2HComparisonResponse>();
 
 export function resetH2HPageCacheForTests() {
@@ -115,17 +128,41 @@ export function H2HPage() {
     return <div className="p-6 text-red-300">{state.message}</div>;
   }
 
-  if (!leagueId || !rivalEntryId || !state.payload.rivalEntry) {
+  if (!leagueId || !rivalEntryId) {
     return (
       <div className="p-6">
         <GlowCard className="p-6">
           <h1 className="font-display text-2xl font-bold text-white">Mini-League</h1>
           <p className="mt-3 text-sm text-white/70">
-            Open a synced rival comparison route to view overlap and manager history.
+            Select a league and rival from the{" "}
+            <Link to="/leagues" className="text-accent underline-offset-4 hover:underline">
+              Mini-League hub
+            </Link>{" "}
+            to view comparison insights.
           </p>
-          <p className="mt-2 text-xs text-white/45">
-            Example path: <code>/leagues/99/h2h/501</code>
+        </GlowCard>
+      </div>
+    );
+  }
+
+  if (!state.payload.rivalEntry && state.payload.syncRequired) {
+    return (
+      <div className="p-6">
+        <GlowCard className="p-6">
+          <h1 className="font-display text-2xl font-bold text-white">Rival not yet synced</h1>
+          <p className="mt-3 text-sm text-white/70">
+            This rival's data hasn't been loaded yet. Sync them to see comparison insights.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              void handleSync();
+            }}
+            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={syncing}
+          >
+            {syncing ? "Syncing…" : "Sync rival now"}
+          </button>
         </GlowCard>
       </div>
     );
@@ -147,7 +184,7 @@ export function H2HPage() {
             onClick={() => {
               void handleSync();
             }}
-            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             disabled={syncing}
           >
             {syncing ? "Syncing…" : "Sync rival now"}
@@ -173,9 +210,19 @@ export function H2HPage() {
               {rivalEntry.playerName} · Rank #{rivalEntry.rank} · {rivalEntry.totalPoints} pts
             </p>
           </div>
-          <Link to="/leagues" className="text-sm text-accent underline-offset-4 hover:underline">
-            Mini-League hub
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => { void handleSync(); }}
+              disabled={syncing}
+              className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {syncing ? "Syncing…" : "Re-sync"}
+            </button>
+            <Link to="/leagues" className="text-sm text-accent underline-offset-4 hover:underline">
+              Mini-League hub
+            </Link>
+          </div>
         </div>
       </GlowCard>
 
@@ -269,13 +316,16 @@ export function H2HPage() {
             </section>
 
             <section className="rounded-xl bg-white/5 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-white/55">Transfer net impact</h3>
+              <h3 className="flex items-center text-sm font-semibold uppercase tracking-wide text-white/55">
+                Transfer net impact
+                <InfoTooltip text={`For each GW where a transfer was made: (your GW score) − (GW average) − (hit cost). Positive means transfers added value above the baseline; negative means churning hurt you.\n\n"You" = your linked FPL team. Rival = ${rivalEntry?.teamName ?? "your rival"}.`} />
+              </h3>
               <p className="mt-2 text-lg font-semibold text-accent">{formatSignedPoints(attribution.transfers.delta)}</p>
               <p className="mt-2 text-sm text-white/70">
-                You: {formatSignedNumber(attribution.transfers.userNetImpact)} · Rival: {attribution.transfers.rivalNetImpact}
+                You: {formatSignedNumber(attribution.transfers.userNetImpact)} · {rivalEntry?.teamName ?? "Rival"}: {formatSignedNumber(attribution.transfers.rivalNetImpact)}
               </p>
               <p className="mt-1 text-xs text-white/45">
-                Hits paid: You {attribution.transfers.userHitCost} · Rival {attribution.transfers.rivalHitCost}
+                Hits paid: You {attribution.transfers.userHitCost} · {rivalEntry?.teamName ?? "Rival"} {attribution.transfers.rivalHitCost}
               </p>
             </section>
 
@@ -314,6 +364,31 @@ export function H2HPage() {
                 </div>
               </div>
             ))}
+            {attribution ? (() => {
+              const positionalDelta = positionalAudit.rows.reduce((sum, row) => sum + row.pointDelta, 0);
+              const userHits = attribution.transfers.userHitCost;
+              const rivalHits = attribution.transfers.rivalHitCost;
+              const hitAdjustment = rivalHits - userHits;
+              const netTotal = positionalDelta + hitAdjustment;
+              return (
+                <div className="mt-1 border-t border-white/10 pt-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between text-white/50">
+                    <span>Positional subtotal (incl. captain bonus)</span>
+                    <span>{formatSignedPoints(positionalDelta)}</span>
+                  </div>
+                  {hitAdjustment !== 0 && (
+                    <div className="flex justify-between text-white/50">
+                      <span>Transfer hits (You −{userHits} · Rival −{rivalHits})</span>
+                      <span>{formatSignedPoints(hitAdjustment)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-white pt-1 border-t border-white/10">
+                    <span>Net total</span>
+                    <span>{formatSignedPoints(netTotal)}</span>
+                  </div>
+                </div>
+              );
+            })() : null}
           </div>
         </GlowCard>
       ) : null}

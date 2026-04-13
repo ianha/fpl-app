@@ -307,6 +307,13 @@ export type RivalSyncResponse = {
   lastSyncedGw: number | null;
 };
 
+export type MyLeague = {
+  leagueId: number;
+  leagueType: "classic" | "h2h";
+  leagueName: string;
+  syncedAt: string;
+};
+
 export type H2HPlayerRef = {
   id: number;
   webName: string;

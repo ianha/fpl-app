@@ -370,16 +370,9 @@ export class MyTeamSyncService {
                 upsertPoints.run(pts, accountId, gameweekId, pick.element);
               }
             }
-            // Recompute GW total from live points × multiplier so the stored value matches player cards
-            const totalPoints = picks.picks
-              .filter((p) => p.position <= 11)
-              .reduce((sum, p) => sum + (pointsById.get(p.element) ?? 0) * p.multiplier, 0);
-            const pointsOnBench = picks.picks
-              .filter((p) => p.position > 11)
-              .reduce((sum, p) => sum + (pointsById.get(p.element) ?? 0), 0);
-            this.db
-              .prepare(`UPDATE my_team_gameweeks SET points = ?, points_on_bench = ? WHERE account_id = ? AND gameweek_id = ?`)
-              .run(totalPoints, pointsOnBench, accountId, gameweekId);
+            // my_team_gameweeks.points is authoritative from picks.entry_history.points (set above).
+            // Do not overwrite it — a partial recalculation (e.g. position <= 11 only) would
+            // under-count Bench Boost GWs where all 15 players contribute.
           }
         } catch {
           // live points are best-effort; don't fail the sync

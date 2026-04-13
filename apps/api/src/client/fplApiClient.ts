@@ -157,14 +157,37 @@ type PublicEntryHistoryResponse = {
   }>;
 };
 
+type EntryLeagueItem = {
+  id: number;
+  name: string;
+};
+
+export type EntryInfoResponse = {
+  id: number;
+  player_first_name: string;
+  player_last_name: string;
+  name: string;
+  summary_overall_rank: number;
+  summary_overall_points: number;
+  leagues: {
+    classic: EntryLeagueItem[];
+    h2h: EntryLeagueItem[];
+  };
+};
+
 type PublicEntryPicksResponse = {
   active_chip: string | null;
+  automatic_subs: Array<{
+    element_in: number;
+    element_out: number;
+  }>;
   picks: Array<{
     element: number;
     position: number;
     multiplier: number;
     is_captain: boolean;
     is_vice_captain: boolean;
+    element_type: number;
   }>;
 };
 
@@ -223,6 +246,20 @@ export class FplApiClient {
     return this.rateLimiter.schedule(() =>
       fetchJson<PublicEntryHistoryResponse>(
         `${env.baseUrl}/entry/${entryId}/history/`,
+      ),
+    );
+  }
+
+  async getEntryInfo(entryId: number) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<EntryInfoResponse>(`${env.baseUrl}/entry/${entryId}/`),
+    );
+  }
+
+  async getEventLive(gameweek: number) {
+    return this.rateLimiter.schedule(() =>
+      fetchJson<{ elements: Array<{ id: number; stats: { total_points: number; minutes: number } }> }>(
+        `${env.baseUrl}/event/${gameweek}/live/`,
       ),
     );
   }

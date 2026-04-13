@@ -8,6 +8,7 @@ import { RecapCardService } from "../services/recapCardService.js";
 import { env } from "../config/env.js";
 import type { TransferDecisionHorizon } from "@fpl/contracts";
 import { RivalSyncService, type RivalLeagueType } from "../services/rivalSyncService.js";
+import { FplApiClient } from "../client/fplApiClient.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -84,6 +85,7 @@ export function createApiRouter(db: AppDatabase) {
   const myTeamSyncService = new MyTeamSyncService(db);
   const recapCardService = new RecapCardService(db);
   const rivalSyncService = new RivalSyncService(db);
+  const fplApiClient = new FplApiClient();
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -137,6 +139,57 @@ export function createApiRouter(db: AppDatabase) {
 
   router.get("/my-team/accounts", (_req, res) => {
     res.json(queryService.getMyTeamAccounts());
+  });
+
+  router.get("/my-team/leagues", (req, res) => {
+    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
+    const leagues = db
+      .prepare(
+        `SELECT league_id AS leagueId, league_type AS leagueType, league_name AS leagueName, synced_at AS syncedAt
+         FROM rival_leagues WHERE account_id = ? ORDER BY league_name`,
+      )
+      .all(accountId);
+    res.json(leagues);
+  });
+
+  router.post("/my-team/leagues/discover", async (req, res) => {
+    const accountId = (req.body as { accountId?: number }).accountId ?? 1;
+    const account = db
+      .prepare(`SELECT entry_id FROM my_team_accounts WHERE id = ?`)
+      .get(accountId) as { entry_id: number | null } | undefined;
+
+    if (!account?.entry_id) {
+      res.status(404).json({ message: "Account not found or entry ID not set. Sync your team first." });
+      return;
+    }
+
+    try {
+      const data = await fplApiClient.getEntryInfo(account.entry_id);
+      const now = new Date().toISOString();
+      const upsert = db.prepare(
+        `INSERT INTO rival_leagues (league_id, league_type, league_name, account_id, synced_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(league_id, league_type, account_id) DO UPDATE SET
+           league_name = excluded.league_name`,
+      );
+      db.transaction(() => {
+        for (const league of data.leagues.classic) {
+          upsert.run(league.id, "classic", league.name, accountId, now);
+        }
+        for (const league of data.leagues.h2h) {
+          upsert.run(league.id, "h2h", league.name, accountId, now);
+        }
+      })();
+      const leagues = db
+        .prepare(
+          `SELECT league_id AS leagueId, league_type AS leagueType, league_name AS leagueName, synced_at AS syncedAt
+           FROM rival_leagues WHERE account_id = ? ORDER BY league_name`,
+        )
+        .all(accountId);
+      res.json(leagues);
+    } catch (error) {
+      res.status(502).json({ message: error instanceof Error ? error.message : String(error) });
+    }
   });
 
   router.get("/my-team/picks", (req, res) => {
@@ -313,7 +366,16 @@ export function createApiRouter(db: AppDatabase) {
     const leagueType = type === "h2h" ? "h2h" : "classic";
 
     try {
-      await rivalSyncService.syncLeagueStandings(leagueId, leagueType, accountId);
+      const leagueKnown = db
+        .prepare(
+          `SELECT 1 FROM rival_leagues WHERE league_id = ? AND league_type = ? AND account_id = ? LIMIT 1`,
+        )
+        .get(leagueId, leagueType, accountId);
+
+      if (!leagueKnown) {
+        await rivalSyncService.syncLeagueStandings(leagueId, leagueType, accountId);
+      }
+
       const result = await rivalSyncService.syncRivalOnDemand(
         leagueId,
         rivalEntryId,
