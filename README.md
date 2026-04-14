@@ -76,6 +76,16 @@ When running sync commands through `npm`, use `--` to pass options directly to t
 
 *Example Combination:* `npm run sync:my-team -- --email test@test.com --gameweek 29 --force`
 
+### ML Model Commands
+
+| Command | Description |
+|---|---|
+| `npm run retrain:model` | Train the model on pending gameweeks and clear them from the queue |
+| `npm run retrain:model -- --all` | Retrain on all finished gameweeks |
+| `npm run retrain:model -- --gameweek 29` | Retrain on a specific gameweek |
+| `npm run ack:pending-ml-evaluation -w @fpl/api -- --all` | Clear the entire pending ML evaluation queue |
+| `npm run ack:pending-ml-evaluation -w @fpl/api -- --gameweek 29` | Clear a specific gameweek from the queue |
+
 ## Environment Variables
 
 Copy `.env.example` to `.env`. Key variables:
