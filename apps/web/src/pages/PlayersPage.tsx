@@ -4,6 +4,7 @@ import type { PlayerCard, PlayerXpts, TeamSummary } from "@fpl/contracts";
 import { getPlayers, getTeams, getGameweeks, getPlayerXpts, resolveAssetUrl } from "@/api/client";
 import type { GameweekSummary } from "@fpl/contracts";
 import { formatCost, formatPercent } from "@/lib/format";
+import type { AsyncState } from "@/lib/asyncState";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -26,11 +27,6 @@ import {
   type PlayerColumnKey,
   type SortDir,
 } from "./playersPageUtils";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 const PLAYERS_PAGE_SIZE = 35;
 
@@ -99,21 +95,17 @@ const COLUMNS: ColDef[] = [
       return <span className="font-semibold text-accent">{v.toFixed(1)}</span>;
     },
   },
-  // Goals group
   { key: "goalsScored",              label: "G",   title: "Goals",                    align: "right", sortable: true, group: "Goals" },
   { key: "expectedGoals",            label: "xG",  title: "Expected Goals",           align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "Goals" },
   { key: "expectedGoalPerformance",  label: "xGP", title: "Expected Goal Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "Goals" },
-  // Assists group
   { key: "assists",                   label: "A",   title: "Assists",                    align: "right", sortable: true, group: "Assists" },
   { key: "expectedAssists",           label: "xA",  title: "Expected Assists",           align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "Assists" },
   { key: "expectedAssistPerformance", label: "xAP", title: "Expected Assist Performance",align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "Assists" },
-  // GI group
   { key: "gi",                                  label: "GI",   title: "Goal Involvements (G+A)",            align: "right", sortable: true, compute: (p) => p.goalsScored + p.assists, group: "GI" },
   { key: "expectedGoalInvolvements",            label: "xGI",  title: "Expected Goal Involvements",         align: "right", sortable: true, format: (v) => Number(v).toFixed(2), group: "GI" },
   { key: "expectedGoalInvolvementPerformance",  label: "xGIP", title: "Expected Goal Involvement Performance", align: "right", sortable: true, signed: true, format: (v) => { const n = Number(v); return <span style={{ color: n < 0 ? "hsl(0,72%,51%)" : "hsl(160,100%,50%)" }}>{n.toFixed(2)}</span>; }, group: "GI" },
 ];
 
-// Track which keys are the first column in their group (for left-border separator)
 const GROUP_STARTS = new Set<string>(
   COLUMNS.reduce<string[]>((acc, col, i) => {
     if (col.group && (i === 0 || COLUMNS[i - 1].group !== col.group)) acc.push(col.key);
@@ -196,7 +188,6 @@ export function PlayersPage() {
   const [fromGW, setFromGW] = useState<string>(() => searchParams.get("fromGW") ?? getSavedParam("fromGW"));
   const [toGW, setToGW] = useState<string>(() => searchParams.get("toGW") ?? getSavedParam("toGW"));
 
-  // Auto-expand on return if any advanced filter was previously active
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(() => {
     return hasActiveAdvancedFilters({
       team: getSavedParam("team", "all"),
@@ -227,7 +218,6 @@ export function PlayersPage() {
   }, []);
 
   useEffect(() => {
-    // xPts — fetch once, populate module-level map, trigger re-render
     if (!_xptsCache) {
       getPlayerXpts()
         .then((data) => {
@@ -237,13 +227,11 @@ export function PlayersPage() {
         })
         .catch(() => {});
     }
-    // Teams — skip if already cached
     if (_teamsCache) {
       setTeams(_teamsCache);
     } else {
       getTeams().then((t) => { _teamsCache = t; setTeams(t); }).catch(() => {});
     }
-    // Gameweeks — skip if already cached; only default fromGW/toGW on first load
     if (_gameweeksCache) {
       setGameweeks(_gameweeksCache);
     } else {
@@ -311,7 +299,6 @@ export function PlayersPage() {
     setShowAdvancedFilters(false);
   }, [gameweeks]);
 
-  // Count of active advanced filters (shown as badge on mobile toggle button)
   const activeFilterCount = useMemo(
     () =>
       countActiveAdvancedFilters({
@@ -416,10 +403,7 @@ export function PlayersPage() {
         <p className="text-sm text-muted-foreground">Browse and filter all FPL players</p>
       </div>
 
-      {/* ── Filter bar ──────────────────────────────────────────────── */}
       <div className="rounded-xl border border-white/8 bg-white/[0.03] p-2.5 space-y-1.5">
-
-        {/* Row 1: Search + mobile filter toggle */}
         <div className="flex items-center gap-1.5">
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
@@ -442,7 +426,6 @@ export function PlayersPage() {
             )}
           </div>
 
-          {/* Mobile-only toggle — reveals advanced filters */}
           <button
             type="button"
             onClick={() => setShowAdvancedFilters((v) => !v)}
@@ -463,7 +446,6 @@ export function PlayersPage() {
           </button>
         </div>
 
-        {/* Row 2: Position chips — always visible */}
         <div className="flex flex-wrap items-center gap-1">
           {POSITION_CHIPS.map(({ value, label }) => (
             <button
@@ -482,7 +464,6 @@ export function PlayersPage() {
           ))}
         </div>
 
-        {/* Row 3: Advanced filters — collapsible on mobile, always shown on sm+ */}
         <div
           className={cn(
             "grid transition-[grid-template-rows] duration-200 ease-in-out",
@@ -525,7 +506,6 @@ export function PlayersPage() {
 
               <Input type="number" placeholder="Min mins" value={minMinutes} onChange={(e) => setMinMinutes(e.target.value)} className="h-7 w-20 text-xs" min="0" />
 
-              {/* GW range — shown once gameweeks have loaded */}
               {gameweeks.length > 0 && (
                 <div className="flex items-center gap-1">
                   <Select value={fromGW} onValueChange={setFromGW}>
@@ -558,7 +538,6 @@ export function PlayersPage() {
 
       </div>
 
-      {/* ── Action row: count (left) + Reset / Refresh (right) ──────── */}
       <div className="flex items-center justify-between -mt-1">
         {state.status === "ready" ? (
           <p className="text-xs text-muted-foreground">
@@ -673,7 +652,6 @@ export function PlayersPage() {
                           )}
                           <div className="min-w-0 overflow-hidden">
                             <div className="flex items-center gap-1.5">
-                              {/* Name — shrinks to ~2/3 on scroll */}
                               <span
                                 className="font-semibold text-white text-xs truncate"
                                 style={{
@@ -683,7 +661,6 @@ export function PlayersPage() {
                               >
                                 {player.webName}
                               </span>
-                              {/* Position badge — collapses */}
                               <span style={{
                                 display: 'inline-flex',
                                 overflow: 'hidden',
@@ -698,7 +675,6 @@ export function PlayersPage() {
                                   </span>
                                 )}
                               </span>
-                              {/* Status dot — collapses */}
                               <span style={{
                                 display: 'inline-flex',
                                 overflow: 'hidden',
@@ -710,7 +686,6 @@ export function PlayersPage() {
                                 <StatusDot status={player.status} />
                               </span>
                             </div>
-                            {/* Team row — collapses */}
                             <div
                               className="flex items-center gap-1 overflow-hidden"
                               style={{

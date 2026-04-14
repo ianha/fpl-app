@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, MotionConfig, useMotionValue, useMotionTemplate, animate } from "framer-motion";
 import type { OverviewResponse, PlayerXpts } from "@fpl/contracts";
 import { getOverview, getPlayerXpts, resolveAssetUrl } from "@/api/client";
+import type { AsyncState } from "@/lib/asyncState";
 import { formatCost } from "@/lib/format";
 import { GlowCard, BGPattern } from "@/components/ui/glow-card";
 import {
@@ -17,11 +18,6 @@ import {
   Sparkles,
   ShieldAlert,
 } from "lucide-react";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 const POSITION_LABELS: Record<number, { short: string; color: string }> = {
   1: { short: "GKP", color: "bg-yellow-500/20 text-yellow-300" },

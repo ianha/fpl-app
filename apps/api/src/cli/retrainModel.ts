@@ -3,34 +3,11 @@ import type { AppDatabase } from "../db/database.js";
 import { createDatabase } from "../db/database.js";
 import { MlModelRegistryService } from "../services/mlModelRegistryService.js";
 import { RidgeRegressionService } from "../services/ridgeRegressionService.js";
-
-function parseGameweekArg(argv: string[]) {
-  const gameweekIndex = argv.findIndex((arg) => arg === "--gameweek" || arg === "-g");
-  if (gameweekIndex >= 0) {
-    const value = argv[gameweekIndex + 1];
-    const parsed = Number(value);
-    if (!value || !Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error("`--gameweek` must be followed by a positive integer.");
-    }
-    return parsed;
-  }
-
-  const prefixedArg = argv.find((arg) => arg.startsWith("--gameweek="));
-  if (!prefixedArg) {
-    return undefined;
-  }
-
-  const parsed = Number(prefixedArg.split("=")[1]);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("`--gameweek` must be a positive integer.");
-  }
-
-  return parsed;
-}
+import { hasFlag, parseOptionalPositiveIntegerArg } from "./argParsers.js";
 
 export function parseRetrainModelArgs(argv: string[]) {
-  const gameweek = parseGameweekArg(argv);
-  const all = argv.includes("--all");
+  const gameweek = parseOptionalPositiveIntegerArg(argv, ["--gameweek", "-g"], "--gameweek");
+  const all = hasFlag(argv, ["--all"]);
 
   if (all && gameweek !== undefined) {
     throw new Error("Use either `--gameweek` or `--all`, not both.");

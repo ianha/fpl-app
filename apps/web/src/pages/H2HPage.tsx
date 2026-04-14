@@ -2,6 +2,7 @@ import type { H2HComparisonResponse } from "@fpl/contracts";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getH2HComparison, syncH2HRival } from "@/api/client";
+import type { PayloadAsyncState } from "@/lib/asyncState";
 import { GlowCard } from "@/components/ui/glow-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,11 +18,6 @@ import {
   getLuckVerdictLabel,
   getTrendLabel,
 } from "./h2hPageUtils";
-
-type AsyncState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; payload: H2HComparisonResponse };
 
 function InfoTooltip({ text }: { text: string }) {
   return (
@@ -44,7 +40,7 @@ export function resetH2HPageCacheForTests() {
 
 export function H2HPage() {
   const { leagueId, rivalEntryId } = useParams<{ leagueId?: string; rivalEntryId?: string }>();
-  const [state, setState] = useState<AsyncState>({ status: "loading" });
+  const [state, setState] = useState<PayloadAsyncState<H2HComparisonResponse>>({ status: "loading" });
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);

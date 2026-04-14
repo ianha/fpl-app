@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formatCost } from "@/lib/format";
+import type { PayloadAsyncState } from "@/lib/asyncState";
 import { computePointBreakdown } from "@/lib/points";
 import { type SquadEntry } from "@/lib/my-team";
 import {
@@ -43,11 +44,6 @@ import {
   usePlayerXpts,
   useTransferDecision,
 } from "./useMyTeamPageData";
-
-type AsyncState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; payload: MyTeamPageResponse };
 
 const POSITION_CONFIG: Record<number, { label: string; color: string }> = {
   1: { label: "GKP", color: "bg-yellow-500/20 text-yellow-300" },
@@ -344,7 +340,7 @@ export function MyTeamPage() {
   const initialAccountId = parseNullableNumber(searchParams.get("accountId") ?? getSavedMyTeamParam("accountId"));
   const initialViewGameweek = parseNullableNumber(searchParams.get("viewGW") ?? getSavedMyTeamParam("viewGW"));
   const initialCache = getMyTeamCacheEntry(initialAccountId);
-  const [state, setState] = useState<AsyncState>(() =>
+  const [state, setState] = useState<PayloadAsyncState<MyTeamPageResponse>>(() =>
     initialCache?.state ?? { status: "loading" },
   );
   // Skip entrance animations when data was already in cache at mount time
@@ -658,14 +654,10 @@ export function MyTeamPage() {
       <BGPattern variant="grid" mask="fade-edges" className="opacity-40" />
 
       <div className="relative z-10 mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-
-        {/* ── HERO ─────────────────────────────────────────────────── */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <GlowCard className="overflow-hidden p-5 md:p-6" glowColor="magenta">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,255,191,0.07),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(233,0,82,0.09),transparent_40%)]" />
             <div className="relative space-y-4">
-
-              {/* Label + team name + manager info */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="h-3.5 w-3.5 text-accent" />
@@ -674,7 +666,6 @@ export function MyTeamPage() {
                 <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">
                   {payload.teamName}
                 </h1>
-                {/* Account selector — inline when single, buttons when multiple */}
                 {payload.accounts.length === 1 ? (
                   <div className="mt-1 flex items-center gap-2 text-sm text-white/50">
                     <span className="font-medium text-white/70">{payload.accounts[0].managerName || payload.accounts[0].email}</span>
@@ -705,8 +696,6 @@ export function MyTeamPage() {
                   </div>
                 )}
               </div>
-
-              {/* Stats — single horizontal row */}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                 <div className="flex items-center gap-1.5">
                   <Trophy className="h-3.5 w-3.5 text-accent" />
@@ -730,8 +719,6 @@ export function MyTeamPage() {
                 </div>
               </div>
             </div>
-
-            {/* Auth warning */}
             {needsRelogin && (
               <div className="relative mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
                 <div className="flex items-start gap-3">
@@ -763,14 +750,9 @@ export function MyTeamPage() {
             )}
           </GlowCard>
         </motion.div>
-
-        {/* ── MAIN GRID: Pitch + Planner ───────────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-
-          {/* Pitch View */}
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08, duration: 0.45 }}>
             <GlowCard className="overflow-hidden p-5 sm:p-6" glowColor="teal">
-              {/* Header row */}
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="font-display text-xl font-bold">Pitch View</h2>
@@ -827,9 +809,7 @@ export function MyTeamPage() {
                 ))}
               </div>
 
-              {/* GW selector — prev/next buttons + dropdown */}
               <div className="mb-5 flex flex-wrap items-center gap-2">
-                {/* ← earlier gameweek (history is descending, so idx+1 = lower GW) */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -849,7 +829,6 @@ export function MyTeamPage() {
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* dropdown — naturally sized to content */}
                 <Select
                   value={String(viewGameweek ?? "")}
                   onValueChange={(val) => selectViewGameweek(Number(val), selectedAccount.id, payload.currentGameweek ?? 0)}
@@ -866,7 +845,6 @@ export function MyTeamPage() {
                   </SelectContent>
                 </Select>
 
-                {/* → later gameweek (history is descending, so idx-1 = higher GW) */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -896,8 +874,6 @@ export function MyTeamPage() {
                   </span>
                 )}
               </div>
-
-              {/* Pitch field */}
               {(() => {
                 const isHistorical = viewGameweek !== payload.currentGameweek;
                 const displayPicks = dedupePitchEntries(
@@ -940,27 +916,18 @@ export function MyTeamPage() {
                 return (
                   <div className="overflow-hidden rounded-2xl border border-white/8">
 
-                    {/* ── PITCH AREA ─────────────────────────────────── */}
                     <div className="relative bg-[linear-gradient(180deg,#2d8a4e_0%,#1f6335_55%,#174d28_100%)] px-4 pb-8 pt-5">
-
-                      {/* SVG field markings */}
                       <svg
                         className="pointer-events-none absolute inset-0 h-full w-full"
                         viewBox="0 0 100 100"
                         preserveAspectRatio="none"
                         aria-hidden="true"
                       >
-                        {/* Penalty area */}
                         <rect x="18" y="0" width="64" height="18" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
-                        {/* Goal area */}
                         <rect x="34" y="0" width="32" height="8" rx="0.3" fill="none" stroke="white" strokeOpacity="0.1" strokeWidth="0.6" />
-                        {/* Penalty spot */}
                         <circle cx="50" cy="13" r="0.8" fill="white" fillOpacity="0.12" />
-                        {/* Halfway line */}
                         <line x1="0" y1="84" x2="100" y2="84" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
-                        {/* Center circle */}
                         <circle cx="50" cy="84" r="10" fill="none" stroke="white" strokeOpacity="0.09" strokeWidth="0.6" />
-                        {/* Center spot */}
                         <circle cx="50" cy="84" r="0.8" fill="white" fillOpacity="0.12" />
                       </svg>
 
@@ -994,7 +961,6 @@ export function MyTeamPage() {
                       )}
                     </div>
 
-                    {/* ── BENCH AREA ─────────────────────────────────── */}
                     <div className="bg-[rgba(8,3,22,0.98)] px-4 py-3">
                       <p className="mb-2.5 text-[9px] font-semibold uppercase tracking-[0.25em] text-white/30">
                         Substitutes
@@ -1023,8 +989,6 @@ export function MyTeamPage() {
               })()}
             </GlowCard>
           </motion.div>
-
-          {/* Captain Recommendations */}
           {captainRecs.length > 0 && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05, duration: 0.4 }}>
               <GlowCard className="p-4 sm:p-5" glowColor="purple">
@@ -1064,8 +1028,6 @@ export function MyTeamPage() {
               </GlowCard>
             </motion.div>
           )}
-
-          {/* Transfer Planner */}
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14, duration: 0.45 }}>
             <GlowCard className="p-5 sm:p-6">
               <div className="mb-5 flex items-start justify-between gap-3">
@@ -1269,11 +1231,7 @@ export function MyTeamPage() {
             </GlowCard>
           </motion.div>
         </div>
-
-        {/* ── HISTORY GRID: 3 columns ───────────────────────────────── */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-
-          {/* Recent Gameweeks */}
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.45 }}>
             <GlowCard className="p-5 sm:p-6">
               <div className="mb-1 flex items-center gap-2">
@@ -1327,8 +1285,6 @@ export function MyTeamPage() {
               </div>
             </GlowCard>
           </motion.div>
-
-          {/* Recent Transfers */}
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.45 }}>
             <GlowCard className="p-5 sm:p-6">
               <div className="mb-1 flex items-center gap-2">
@@ -1372,8 +1328,6 @@ export function MyTeamPage() {
               </div>
             </GlowCard>
           </motion.div>
-
-          {/* Season Archive */}
           <motion.div className="min-w-0" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.45 }}>
             <GlowCard className="p-5 sm:p-6">
               <div className="mb-1 flex items-center gap-2">
@@ -1415,8 +1369,6 @@ export function MyTeamPage() {
 
       </div>
     </motion.div>
-
-    {/* ── PLAYER DETAIL MODAL ──────────────────────────────────── */}
     <Dialog open={!!selectedPick} onOpenChange={(open) => { if (!open) setSelectedPick(null); }}>
       <DialogContent>
         {selectedPick && (() => {
@@ -1427,7 +1379,6 @@ export function MyTeamPage() {
           const multiplier = pick.multiplier;
           const displayPoints = gwPoints * multiplier;
 
-          // Find matching history entry for this GW
           const gwHistory = playerDetail?.history.find(
             (h) => h.round === viewGameweek && h.totalPoints === gwPoints,
           ) ?? playerDetail?.history.find((h) => h.round === viewGameweek);
@@ -1436,7 +1387,6 @@ export function MyTeamPage() {
 
           return (
             <div className="space-y-4">
-              {/* Header */}
               <DialogHeader>
                 <div className="flex items-center gap-3 pr-6">
                   {image ? (
@@ -1476,7 +1426,6 @@ export function MyTeamPage() {
                 </div>
               </DialogHeader>
 
-              {/* Point breakdown table */}
               {playerDetailLoading ? (
                 <div className="flex items-center justify-center py-6">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
@@ -1521,7 +1470,6 @@ export function MyTeamPage() {
                 </div>
               ) : null}
 
-              {/* Expected stats */}
               {gwHistory && (
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -1537,7 +1485,6 @@ export function MyTeamPage() {
                 </div>
               )}
 
-              {/* View full profile link */}
               <Link
                 to={`/players/${player.id}`}
                 className="flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
@@ -1550,8 +1497,6 @@ export function MyTeamPage() {
         })()}
       </DialogContent>
     </Dialog>
-
-    {/* ── SHARE RECAP DIALOG ───────────────────────────────────── */}
     {shareGw !== null && payload && selectedAccount && (
       <ShareRecapDialog
         open={shareGw !== null}

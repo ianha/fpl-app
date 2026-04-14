@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import type { PlayerDetail } from "@fpl/contracts";
 import { getPlayer, getPlayerXpts, resolveAssetUrl } from "@/api/client";
+import type { AsyncState } from "@/lib/asyncState";
 import { formatCost } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,11 +21,6 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
 } from "recharts";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 const POSITIONS: Record<number, string> = {
   1: "Goalkeeper",

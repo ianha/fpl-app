@@ -1,64 +1,13 @@
 import { createDatabase } from "../db/database.js";
 import { SyncService } from "../services/syncService.js";
 import { pathToFileURL } from "node:url";
-
-function parseGameweekArg(argv: string[]) {
-  const gameweekIndex = argv.findIndex((arg) => arg === "--gameweek" || arg === "-g");
-  if (gameweekIndex >= 0) {
-    const value = argv[gameweekIndex + 1];
-    const parsed = Number(value);
-    if (!value || !Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error("`--gameweek` must be followed by a positive integer.");
-    }
-    return parsed;
-  }
-
-  const prefixedArg = argv.find((arg) => arg.startsWith("--gameweek="));
-  if (!prefixedArg) {
-    return undefined;
-  }
-
-  const parsed = Number(prefixedArg.split("=")[1]);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("`--gameweek` must be a positive integer.");
-  }
-
-  return parsed;
-}
-
-function parsePlayerArg(argv: string[]) {
-  const idx = argv.findIndex((a) => a === "--player" || a === "-p");
-  if (idx >= 0) {
-    const value = argv[idx + 1];
-    const parsed = Number(value);
-    if (!value || !Number.isInteger(parsed) || parsed <= 0) {
-      throw new Error("`--player` must be followed by a positive integer.");
-    }
-    return parsed;
-  }
-
-  const prefixed = argv.find((a) => a.startsWith("--player="));
-  if (!prefixed) {
-    return undefined;
-  }
-
-  const parsed = Number(prefixed.split("=")[1]);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("`--player` must be a positive integer.");
-  }
-
-  return parsed;
-}
-
-function parseForceArg(argv: string[]) {
-  return argv.includes("--force") || argv.includes("-f");
-}
+import { hasFlag, parseOptionalPositiveIntegerArg } from "./argParsers.js";
 
 export function parseSyncArgs(argv: string[]) {
   return {
-    gameweek: parseGameweekArg(argv),
-    playerId: parsePlayerArg(argv),
-    force: parseForceArg(argv),
+    gameweek: parseOptionalPositiveIntegerArg(argv, ["--gameweek", "-g"], "--gameweek"),
+    playerId: parseOptionalPositiveIntegerArg(argv, ["--player", "-p"], "--player"),
+    force: hasFlag(argv, ["--force", "-f"]),
   };
 }
 

@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { QueryService } from "../services/queryService.js";
 import type { AppDatabase } from "../db/database.js";
 import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
@@ -9,6 +9,7 @@ import { env } from "../config/env.js";
 import type { TransferDecisionHorizon } from "@fpl/contracts";
 import { RivalSyncService, type RivalLeagueType } from "../services/rivalSyncService.js";
 import { FplApiClient } from "../client/fplApiClient.js";
+import { parseEnumValue, parseOptionalPositiveInt, parseRequiredPositiveInt } from "./routeParams.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -79,6 +80,20 @@ function getRequestOrigin(req: Request) {
   return `${proto}://${host}`;
 }
 
+function sendJsonMessage(res: Response, status: number, message: string) {
+  res.status(status).json({ message });
+}
+
+function sendTextMessage(res: Response, status: number, message: string) {
+  res.status(status).send(message);
+}
+
+function sendParseError(res: Response, error: { status: number; message: string } | undefined) {
+  if (!error) return false;
+  sendJsonMessage(res, error.status, error.message);
+  return true;
+}
+
 export function createApiRouter(db: AppDatabase) {
   const router = Router();
   const queryService = new QueryService(db);
@@ -104,32 +119,44 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/fixtures", (req, res) => {
-    const event = req.query.event ? Number(req.query.event) : undefined;
-    const team = req.query.team ? Number(req.query.team) : undefined;
-    res.json(queryService.getFixtures(event, team));
+    const eventResult = parseOptionalPositiveInt(req.query.event?.toString(), "event");
+    if (sendParseError(res, eventResult.error)) return;
+    const teamResult = parseOptionalPositiveInt(req.query.team?.toString(), "team");
+    if (sendParseError(res, teamResult.error)) return;
+    res.json(queryService.getFixtures(eventResult.value, teamResult.value));
   });
 
   router.get("/players", (req, res) => {
+    const teamResult = parseOptionalPositiveInt(req.query.team?.toString(), "team");
+    if (sendParseError(res, teamResult.error)) return;
+    const positionResult = parseOptionalPositiveInt(req.query.position?.toString(), "position");
+    if (sendParseError(res, positionResult.error)) return;
+    const fromGwResult = parseOptionalPositiveInt(req.query.fromGW?.toString(), "fromGW");
+    if (sendParseError(res, fromGwResult.error)) return;
+    const toGwResult = parseOptionalPositiveInt(req.query.toGW?.toString(), "toGW");
+    if (sendParseError(res, toGwResult.error)) return;
     res.json(
       queryService.getPlayers({
         search: req.query.search?.toString(),
-        team: req.query.team ? Number(req.query.team) : undefined,
-        position: req.query.position ? Number(req.query.position) : undefined,
+        team: teamResult.value,
+        position: positionResult.value,
         sort: req.query.sort?.toString(),
-        fromGW: req.query.fromGW ? Number(req.query.fromGW) : undefined,
-        toGW: req.query.toGW ? Number(req.query.toGW) : undefined,
+        fromGW: fromGwResult.value,
+        toGW: toGwResult.value,
       }),
     );
   });
 
-  // Specific sub-routes must come BEFORE /:id wildcard
   router.get("/players/xpts", (req, res) => {
-    const gw = req.query.gw ? Number(req.query.gw) : undefined;
-    res.json(queryService.getPlayerXpts(gw));
+    const gwResult = parseOptionalPositiveInt(req.query.gw?.toString(), "gw");
+    if (sendParseError(res, gwResult.error)) return;
+    res.json(queryService.getPlayerXpts(gwResult.value));
   });
 
   router.get("/players/:id", (req, res) => {
-    const player = queryService.getPlayerById(Number(req.params.id));
+    const playerIdResult = parseRequiredPositiveInt(req.params.id, "playerId");
+    if (sendParseError(res, playerIdResult.error)) return;
+    const player = queryService.getPlayerById(playerIdResult.value!);
     if (!player) {
       res.status(404).json({ message: "Player not found" });
       return;
@@ -142,7 +169,9 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/my-team/leagues", (req, res) => {
-    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const accountId = accountIdResult.value ?? 1;
     const leagues = db
       .prepare(
         `SELECT league_id AS leagueId, league_type AS leagueType, league_name AS leagueName, synced_at AS syncedAt
@@ -194,8 +223,12 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/my-team/picks", (req, res) => {
-    const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
-    const gameweek = req.query.gameweek ? Number(req.query.gameweek) : undefined;
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const gameweekResult = parseOptionalPositiveInt(req.query.gameweek?.toString(), "gameweek");
+    if (sendParseError(res, gameweekResult.error)) return;
+    const accountId = accountIdResult.value;
+    const gameweek = gameweekResult.value;
     if (!accountId || !gameweek) {
       res.status(400).json({ message: "accountId and gameweek are required" });
       return;
@@ -204,32 +237,27 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/my-team", (req, res) => {
-    const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
-    res.json(queryService.getMyTeam(accountId));
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    res.json(queryService.getMyTeam(accountIdResult.value));
   });
 
   router.get("/my-team/:accountId/transfer-decision", (req, res) => {
-    const accountId = Number(req.params.accountId);
-    const gw = req.query.gw ? Number(req.query.gw) : undefined;
-    const rawHorizon = req.query.horizon ? Number(req.query.horizon) : 3;
-    const horizon = ([1, 3, 5].includes(rawHorizon)
-      ? rawHorizon
-      : null) as TransferDecisionHorizon | null;
-
-    if (!accountId) {
-      res.status(400).json({ message: "accountId must be a positive integer" });
-      return;
-    }
-
-    if (gw !== undefined && (!Number.isInteger(gw) || gw <= 0)) {
-      res.status(400).json({ message: "gw must be a positive integer when provided" });
-      return;
-    }
-
-    if (!horizon) {
-      res.status(400).json({ message: "horizon must be one of 1, 3, or 5" });
-      return;
-    }
+    const accountIdResult = parseRequiredPositiveInt(req.params.accountId, "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const gwResult = parseOptionalPositiveInt(req.query.gw?.toString(), "gw");
+    if (sendParseError(res, gwResult.error)) return;
+    const rawHorizon = req.query.horizon?.toString() ?? "3";
+    const horizonResult = parseEnumValue(
+      rawHorizon,
+      ["1", "3", "5"] as const,
+      "horizon",
+      "horizon must be one of 1, 3, or 5",
+    );
+    if (sendParseError(res, horizonResult.error)) return;
+    const accountId = accountIdResult.value!;
+    const gw = gwResult.value;
+    const horizon = Number(horizonResult.value) as TransferDecisionHorizon;
 
     const response = queryService.getTransferDecision(accountId, { gw, horizon });
     if (!response) {
@@ -280,10 +308,14 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/my-team/captain-pick", (req, res) => {
-    const accountId = req.query.accountId ? Number(req.query.accountId) : undefined;
-    const gw = req.query.gw ? Number(req.query.gw) : undefined;
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const gwResult = parseOptionalPositiveInt(req.query.gw?.toString(), "gw");
+    if (sendParseError(res, gwResult.error)) return;
+    const accountId = accountIdResult.value;
+    const gw = gwResult.value;
     if (!accountId || !gw) {
-      res.status(400).json({ message: "accountId and gw are required" });
+      sendJsonMessage(res, 400, "accountId and gw are required");
       return;
     }
     res.json(queryService.getCaptainRecommendations(accountId, gw));
@@ -312,19 +344,20 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/leagues/:leagueId/standings", async (req, res) => {
-    const leagueId = Number(req.params.leagueId);
-    const leagueType = req.query.type === "h2h" ? "h2h" : req.query.type === "classic" ? "classic" : null;
-    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
-
-    if (!Number.isInteger(leagueId) || leagueId <= 0) {
-      res.status(400).json({ message: "leagueId must be a positive integer" });
-      return;
-    }
-
-    if (!leagueType) {
-      res.status(400).json({ message: "type must be 'classic' or 'h2h'" });
-      return;
-    }
+    const leagueIdResult = parseRequiredPositiveInt(req.params.leagueId, "leagueId");
+    if (sendParseError(res, leagueIdResult.error)) return;
+    const leagueTypeResult = parseEnumValue(
+      req.query.type?.toString(),
+      ["classic", "h2h"] as const,
+      "type",
+      "type must be 'classic' or 'h2h'",
+    );
+    if (sendParseError(res, leagueTypeResult.error)) return;
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const leagueId = leagueIdResult.value!;
+    const leagueType = leagueTypeResult.value!;
+    const accountId = accountIdResult.value ?? 1;
 
     try {
       const result = await rivalSyncService.syncLeagueStandings(
@@ -341,7 +374,7 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.post("/leagues/:leagueId/sync", async (req, res) => {
-    const leagueId = Number(req.params.leagueId);
+    const leagueIdResult = parseRequiredPositiveInt(req.params.leagueId, "leagueId");
     const { accountId, rivalEntryId, type } = req.body as {
       accountId?: number;
       rivalEntryId?: number;
@@ -349,38 +382,31 @@ export function createApiRouter(db: AppDatabase) {
       syncSecret?: string;
     };
 
-    if (!Number.isInteger(leagueId) || leagueId <= 0) {
-      res.status(400).json({ message: "leagueId must be a positive integer" });
-      return;
-    }
-
-    if (!Number.isInteger(accountId) || !accountId || accountId <= 0) {
-      res.status(400).json({ message: "accountId must be a positive integer" });
-      return;
-    }
-
-    if (!Number.isInteger(rivalEntryId) || !rivalEntryId || rivalEntryId <= 0) {
-      res.status(400).json({ message: "rivalEntryId must be a positive integer" });
-      return;
-    }
-
+    if (sendParseError(res, leagueIdResult.error)) return;
+    const accountIdResult = parseRequiredPositiveInt(accountId, "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    const rivalEntryIdResult = parseRequiredPositiveInt(rivalEntryId, "rivalEntryId");
+    if (sendParseError(res, rivalEntryIdResult.error)) return;
     const leagueType = type === "h2h" ? "h2h" : "classic";
+    const leagueId = leagueIdResult.value!;
+    const safeAccountId = accountIdResult.value!;
+    const safeRivalEntryId = rivalEntryIdResult.value!;
 
     try {
       const leagueKnown = db
         .prepare(
           `SELECT 1 FROM rival_leagues WHERE league_id = ? AND league_type = ? AND account_id = ? LIMIT 1`,
         )
-        .get(leagueId, leagueType, accountId);
+        .get(leagueId, leagueType, safeAccountId);
 
       if (!leagueKnown) {
-        await rivalSyncService.syncLeagueStandings(leagueId, leagueType, accountId);
+        await rivalSyncService.syncLeagueStandings(leagueId, leagueType, safeAccountId);
       }
 
       const result = await rivalSyncService.syncRivalOnDemand(
         leagueId,
-        rivalEntryId,
-        accountId,
+        safeRivalEntryId,
+        safeAccountId,
       );
       res.json(result);
     } catch (error) {
@@ -391,41 +417,31 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/leagues/:leagueId/h2h/:rivalEntryId", (req, res) => {
-    const leagueId = Number(req.params.leagueId);
-    const rivalEntryId = Number(req.params.rivalEntryId);
-    const accountId = req.query.accountId ? Number(req.query.accountId) : 1;
-
-    if (!Number.isInteger(leagueId) || leagueId <= 0) {
-      res.status(400).json({ message: "leagueId must be a positive integer" });
-      return;
-    }
-
-    if (!Number.isInteger(rivalEntryId) || rivalEntryId <= 0) {
-      res.status(400).json({ message: "rivalEntryId must be a positive integer" });
-      return;
-    }
-
-    if (!Number.isInteger(accountId) || accountId <= 0) {
-      res.status(400).json({ message: "accountId must be a positive integer" });
-      return;
-    }
-
-    res.json(queryService.getH2HComparison(accountId, leagueId, rivalEntryId));
+    const leagueIdResult = parseRequiredPositiveInt(req.params.leagueId, "leagueId");
+    if (sendParseError(res, leagueIdResult.error)) return;
+    const rivalEntryIdResult = parseRequiredPositiveInt(req.params.rivalEntryId, "rivalEntryId");
+    if (sendParseError(res, rivalEntryIdResult.error)) return;
+    const accountIdResult = parseOptionalPositiveInt(req.query.accountId?.toString(), "accountId");
+    if (sendParseError(res, accountIdResult.error)) return;
+    res.json(queryService.getH2HComparison(
+      accountIdResult.value ?? 1,
+      leagueIdResult.value!,
+      rivalEntryIdResult.value!,
+    ));
   });
 
-  // GET /api/my-team/:accountId/recap/:gw/preview — HTML page with OG/Twitter card meta tags
-  // so X/WhatsApp/Telegram scrapers render the recap image inline when the link is shared.
-  // Real browsers are immediately redirected to the PNG via <meta http-equiv="refresh">.
   router.get("/my-team/:accountId/recap/:gw/preview", async (req, res) => {
-    const accountId = Number(req.params.accountId);
-    const gw = Number(req.params.gw);
-    if (!accountId || !gw) {
-      res.status(400).send("Bad request");
+    const accountIdResult = parseRequiredPositiveInt(req.params.accountId, "accountId");
+    const gwResult = parseRequiredPositiveInt(req.params.gw, "gw");
+    if (accountIdResult.error || gwResult.error) {
+      sendTextMessage(res, 400, "Bad request");
       return;
     }
+    const accountId = accountIdResult.value;
+    const gw = gwResult.value;
     const data = recapCardService.getRecapData(accountId, gw);
     if (!data) {
-      res.status(404).send("Not found");
+      sendTextMessage(res, 404, "Not found");
       return;
     }
 
@@ -483,12 +499,14 @@ export function createApiRouter(db: AppDatabase) {
   });
 
   router.get("/my-team/:accountId/recap/:gw", async (req, res) => {
-    const accountId = Number(req.params.accountId);
-    const gw = Number(req.params.gw);
-    if (!accountId || !gw) {
-      res.status(400).json({ message: "accountId and gw are required" });
+    const accountIdResult = parseRequiredPositiveInt(req.params.accountId, "accountId");
+    const gwResult = parseRequiredPositiveInt(req.params.gw, "gw");
+    if (accountIdResult.error || gwResult.error) {
+      sendJsonMessage(res, 400, "accountId and gw are required");
       return;
     }
+    const accountId = accountIdResult.value;
+    const gw = gwResult.value;
     const data = recapCardService.getRecapData(accountId, gw);
     if (!data) {
       res.status(404).json({ message: "No recap data found for this account and gameweek" });
@@ -509,7 +527,6 @@ export function createApiRouter(db: AppDatabase) {
     }
   });
 
-  // GET /api/live/gw/:gw/stream — SSE, pushes LiveGwUpdate on each poll
   router.get("/live/gw/:gw/stream", (req, res) => {
     const gameweek = Number(req.params.gw);
     if (!gameweek || gameweek < 1) {
@@ -529,7 +546,6 @@ export function createApiRouter(db: AppDatabase) {
     req.on("close", unsub);
   });
 
-  // GET /api/live/gw/:gw — REST snapshot
   router.get("/live/gw/:gw", async (req, res) => {
     const gameweek = Number(req.params.gw);
     if (!gameweek || gameweek < 1) {

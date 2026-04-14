@@ -3,6 +3,7 @@ import { Writable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { createDatabase } from "../db/database.js";
 import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
+import { hasFlag, parseOptionalPositiveIntegerArg, parseOptionalStringArg } from "./argParsers.js";
 
 type SyncResult = { syncedGameweeks: number };
 type SyncAllResult =
@@ -43,66 +44,6 @@ type ParsedSyncMyTeamArgs = {
   accountId?: number;
   accountEmail?: string;
 };
-
-function parseGameweekArg(argv: string[]) {
-  const gameweekIndex = argv.findIndex((arg) => arg === "--gameweek" || arg === "-g");
-  if (gameweekIndex >= 0) {
-    const value = argv[gameweekIndex + 1];
-    if (!value || Number.isNaN(Number(value)) || Number(value) <= 0) {
-      throw new Error("`--gameweek` must be followed by a positive integer.");
-    }
-    return Number(value);
-  }
-
-  const prefixedArg = argv.find((arg) => arg.startsWith("--gameweek="));
-  if (!prefixedArg) return undefined;
-
-  const value = prefixedArg.split("=")[1];
-  if (!value || Number.isNaN(Number(value)) || Number(value) <= 0) {
-    throw new Error("`--gameweek` must be a positive integer.");
-  }
-  return Number(value);
-}
-
-function parsePositiveIntegerArg(argv: string[], names: string[], label: string) {
-  const argIndex = argv.findIndex((arg) => names.includes(arg));
-  if (argIndex >= 0) {
-    const value = argv[argIndex + 1];
-    if (!value || Number.isNaN(Number(value)) || Number(value) <= 0) {
-      throw new Error(`\`${label}\` must be followed by a positive integer.`);
-    }
-    return Number(value);
-  }
-
-  const prefixedArg = argv.find((arg) => names.some((name) => arg.startsWith(`${name}=`)));
-  if (!prefixedArg) return undefined;
-
-  const value = prefixedArg.split("=")[1];
-  if (!value || Number.isNaN(Number(value)) || Number(value) <= 0) {
-    throw new Error(`\`${label}\` must be a positive integer.`);
-  }
-  return Number(value);
-}
-
-function parseStringArg(argv: string[], names: string[], label: string) {
-  const argIndex = argv.findIndex((arg) => names.includes(arg));
-  if (argIndex >= 0) {
-    const value = argv[argIndex + 1]?.trim();
-    if (!value) {
-      throw new Error(`\`${label}\` must be followed by a value.`);
-    }
-    return value;
-  }
-
-  const prefixedArg = argv.find((arg) => names.some((name) => arg.startsWith(`${name}=`)));
-  if (!prefixedArg) return undefined;
-
-  const value = prefixedArg.split("=")[1]?.trim();
-  if (!value) {
-    throw new Error(`\`${label}\` must be a non-empty value.`);
-  }
-  return value;
-}
 
 function isAuthRecoveryError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
@@ -225,10 +166,10 @@ function findKnownAccount(service: SyncMyTeamService, matcher: (account: KnownAc
 }
 
 export function parseSyncMyTeamArgs(argv: string[]): ParsedSyncMyTeamArgs {
-  const force = argv.includes("--force");
-  const gameweek = parseGameweekArg(argv);
-  const accountId = parsePositiveIntegerArg(argv, ["--account", "-a"], "--account");
-  const accountEmail = parseStringArg(argv, ["--email", "-e"], "--email");
+  const force = hasFlag(argv, ["--force", "-f"]);
+  const gameweek = parseOptionalPositiveIntegerArg(argv, ["--gameweek", "-g"], "--gameweek");
+  const accountId = parseOptionalPositiveIntegerArg(argv, ["--account", "-a"], "--account");
+  const accountEmail = parseOptionalStringArg(argv, ["--email", "-e"], "--email");
 
   if (accountId && accountEmail) {
     throw new Error("Use either `--account` or `--email`, not both.");

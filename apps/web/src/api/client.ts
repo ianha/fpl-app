@@ -40,6 +40,21 @@ function buildApiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
 
+function buildQueryString(params: Record<string, string | number | boolean | undefined>) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      search.set(key, String(value));
+    }
+  }
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
+function withQuery(path: string, params: Record<string, string | number | boolean | undefined>) {
+  return `${path}${buildQueryString(params)}`;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(buildApiUrl(path), init);
   if (!response.ok) {
@@ -87,15 +102,14 @@ export function getPlayers(params?: {
   fromGW?: number;
   toGW?: number;
 }) {
-  const p = new URLSearchParams();
-  if (params?.search) p.set("search", params.search);
-  if (params?.position) p.set("position", params.position);
-  if (params?.sort) p.set("sort", params.sort);
-  if (params?.team) p.set("team", params.team);
-  if (params?.fromGW !== undefined) p.set("fromGW", String(params.fromGW));
-  if (params?.toGW !== undefined) p.set("toGW", String(params.toGW));
-  const q = p.toString();
-  return request<PlayerCard[]>(`/players${q ? `?${q}` : ""}`);
+  return request<PlayerCard[]>(withQuery("/players", {
+    search: params?.search,
+    position: params?.position,
+    sort: params?.sort,
+    team: params?.team,
+    fromGW: params?.fromGW,
+    toGW: params?.toGW,
+  }));
 }
 
 export function getPlayer(playerId: number) {
@@ -107,12 +121,8 @@ export function getH2HComparison(
   rivalEntryId: number,
   options?: { accountId?: number; signal?: AbortSignal },
 ) {
-  const search = new URLSearchParams();
-  if (options?.accountId !== undefined) search.set("accountId", String(options.accountId));
-  const query = search.toString();
-
   return request<H2HComparisonResponse>(
-    `/leagues/${leagueId}/h2h/${rivalEntryId}${query ? `?${query}` : ""}`,
+    withQuery(`/leagues/${leagueId}/h2h/${rivalEntryId}`, { accountId: options?.accountId }),
     options?.signal ? { signal: options.signal } : undefined,
   );
 }
@@ -134,11 +144,7 @@ export function getTeams() {
 }
 
 export function getFixtures(params?: { event?: number; team?: number }) {
-  const p = new URLSearchParams();
-  if (params?.event) p.set("event", String(params.event));
-  if (params?.team) p.set("team", String(params.team));
-  const q = p.toString();
-  return request<FixtureCard[]>(`/fixtures${q ? `?${q}` : ""}`);
+  return request<FixtureCard[]>(withQuery("/fixtures", { event: params?.event, team: params?.team }));
 }
 
 export function resolveAssetUrl(imagePath: string | null) {
@@ -146,8 +152,7 @@ export function resolveAssetUrl(imagePath: string | null) {
 }
 
 export function getMyTeam(accountId?: number) {
-  const q = accountId ? `?accountId=${accountId}` : "";
-  return request<MyTeamPageResponse>(`/my-team${q}`);
+  return request<MyTeamPageResponse>(withQuery("/my-team", { accountId }));
 }
 
 export function linkMyTeamAccount(code: string, codeVerifier: string, entryId?: number) {
@@ -175,12 +180,11 @@ export function getGwCalendar() {
 }
 
 export function getPlayerXpts(gw?: number) {
-  const q = gw ? `?gw=${gw}` : "";
-  return request<PlayerXpts[]>(`/players/xpts${q}`);
+  return request<PlayerXpts[]>(withQuery("/players/xpts", { gw }));
 }
 
 export function getCaptainRecommendation(accountId: number, gw: number) {
-  return request<CaptainRecommendation[]>(`/my-team/captain-pick?accountId=${accountId}&gw=${gw}`);
+  return request<CaptainRecommendation[]>(withQuery("/my-team/captain-pick", { accountId, gw }));
 }
 
 export function getTransferDecision(
@@ -192,15 +196,13 @@ export function getTransferDecision(
     maxHit?: 0 | 4 | 8;
   },
 ) {
-  const search = new URLSearchParams();
-  if (params?.gw !== undefined) search.set("gw", String(params.gw));
-  if (params?.horizon !== undefined) search.set("horizon", String(params.horizon));
-  if (params?.includeHits !== undefined) search.set("includeHits", String(params.includeHits));
-  if (params?.maxHit !== undefined) search.set("maxHit", String(params.maxHit));
-  const query = search.toString();
-
   return request<TransferDecisionResponse>(
-    `/my-team/${accountId}/transfer-decision${query ? `?${query}` : ""}`,
+    withQuery(`/my-team/${accountId}/transfer-decision`, {
+      gw: params?.gw,
+      horizon: params?.horizon,
+      includeHits: params?.includeHits,
+      maxHit: params?.maxHit,
+    }),
   ).then((response) => ({
     ...response,
     replayState: response.replayState ?? "full",
@@ -214,8 +216,7 @@ export function getTransferDecision(
 }
 
 export function getMyLeagues(accountId?: number) {
-  const q = accountId ? `?accountId=${accountId}` : "";
-  return request<MyLeague[]>(`/my-team/leagues${q}`);
+  return request<MyLeague[]>(withQuery("/my-team/leagues", { accountId }));
 }
 
 export function discoverMyLeagues(accountId?: number) {
@@ -223,9 +224,7 @@ export function discoverMyLeagues(accountId?: number) {
 }
 
 export function getLeagueStandings(leagueId: number, type: "classic" | "h2h", accountId?: number) {
-  const p = new URLSearchParams({ type });
-  if (accountId) p.set("accountId", String(accountId));
-  return request<H2HLeagueStanding[]>(`/leagues/${leagueId}/standings?${p.toString()}`);
+  return request<H2HLeagueStanding[]>(withQuery(`/leagues/${leagueId}/standings`, { type, accountId }));
 }
 
 export function getLiveGwSnapshot(gw: number) {

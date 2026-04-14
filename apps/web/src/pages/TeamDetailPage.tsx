@@ -3,14 +3,10 @@ import { useParams, Link } from "react-router-dom";
 import { motion, MotionConfig } from "framer-motion";
 import type { PlayerCard, FixtureCard, TeamSummary } from "@fpl/contracts";
 import { getOverview, getPlayers, getFixtures, resolveAssetUrl } from "@/api/client";
+import type { AsyncState } from "@/lib/asyncState";
 import { formatCost } from "@/lib/format";
 import { GlowCard, BGPattern } from "@/components/ui/glow-card";
 import { ArrowLeft, Users, Shield, Calendar } from "lucide-react";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 const POSITIONS: Record<number, { label: string; short: string; color: string }> = {
   1: { label: "Goalkeepers", short: "GKP", color: "bg-yellow-500/20 text-yellow-300" },

@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import type { FixtureCard, GameweekSummary, GwCalendarRow, TeamSummary } from "@fpl/contracts";
 import { getOverview, getFixtures, getGwCalendar } from "@/api/client";
+import type { AsyncState } from "@/lib/asyncState";
 import { Calendar, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import { GlowCard, BGPattern } from "@/components/ui/glow-card";
 import { cn } from "@/lib/utils";
@@ -12,11 +13,6 @@ import {
   getFixturesCacheKey,
   parseNullableNumber,
 } from "./fixturesPageUtils";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 type FixturesOverviewCache = { gameweeks: GameweekSummary[]; teams: TeamSummary[] };
 let _fixturesOverviewCache: FixturesOverviewCache | null = null;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FdrRow } from "@fpl/contracts";
 import { getFdrData } from "@/api/client";
+import type { AsyncState } from "@/lib/asyncState";
 import { BarChart2 } from "lucide-react";
 import { GlowCard, BGPattern } from "@/components/ui/glow-card";
 import { cn } from "@/lib/utils";
@@ -10,11 +11,6 @@ import {
   getUniqueGameweeks,
   type DifficultyLevel,
 } from "./FDRPageUtils";
-
-type AsyncState<T> =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; data: T };
 
 let _fdrCache: FdrRow[] | null = null;
 
