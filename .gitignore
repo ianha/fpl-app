@@ -12,6 +12,7 @@ coverage/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.tsbuildinfo
 data/
 apps/api/data/
 apps/web/.vite/

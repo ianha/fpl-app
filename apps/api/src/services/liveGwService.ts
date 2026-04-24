@@ -25,7 +25,7 @@ type FplLiveResponse = { elements: FplLiveElement[] };
 
 const _cache = new Map<number, LiveGwUpdate>();
 const _subscribers = new Map<number, Set<(u: LiveGwUpdate) => void>>();
-const _polling = new Set<number>();
+const _pollingIntervals = new Map<number, NodeJS.Timeout>();
 
 async function fetchAndCache(gameweek: number): Promise<void> {
   const data = await fetchJson<FplLiveResponse>(
@@ -68,7 +68,14 @@ function subscribe(
 ): () => void {
   if (!_subscribers.has(gameweek)) _subscribers.set(gameweek, new Set());
   _subscribers.get(gameweek)!.add(fn);
-  return () => _subscribers.get(gameweek)?.delete(fn);
+  return () => {
+    const subscribers = _subscribers.get(gameweek);
+    subscribers?.delete(fn);
+    if (subscribers && subscribers.size === 0) {
+      _subscribers.delete(gameweek);
+      stopPolling(gameweek);
+    }
+  };
 }
 
 function getCached(gameweek: number): LiveGwUpdate | null {
@@ -76,15 +83,38 @@ function getCached(gameweek: number): LiveGwUpdate | null {
 }
 
 function startPolling(gameweek: number, intervalMs = 60_000): void {
-  if (_polling.has(gameweek)) return; // idempotent
-  _polling.add(gameweek);
+  if (_pollingIntervals.has(gameweek)) return; // idempotent
   fetchAndCache(gameweek).catch((e) =>
     console.error("[liveGw] initial fetch failed:", e),
   );
-  setInterval(
+  const interval = setInterval(
     () => fetchAndCache(gameweek).catch((e) => console.error("[liveGw]", e)),
     intervalMs,
   );
+  _pollingIntervals.set(gameweek, interval);
 }
 
-export const liveGwService = { subscribe, getCached, startPolling, fetchAndCache };
+function stopPolling(gameweek: number): void {
+  const interval = _pollingIntervals.get(gameweek);
+  if (!interval) return;
+  clearInterval(interval);
+  _pollingIntervals.delete(gameweek);
+}
+
+function resetForTests(): void {
+  for (const interval of _pollingIntervals.values()) {
+    clearInterval(interval);
+  }
+  _pollingIntervals.clear();
+  _subscribers.clear();
+  _cache.clear();
+}
+
+export const liveGwService = {
+  subscribe,
+  getCached,
+  startPolling,
+  stopPolling,
+  fetchAndCache,
+  resetForTests,
+};

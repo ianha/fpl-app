@@ -192,7 +192,7 @@ export class RidgeRegressionService {
   private readonly trainingMatrixService: TrainingMatrixService;
   private readonly mlModelRegistryService: MlModelRegistryService;
 
-  constructor(private readonly db: AppDatabase) {
+  constructor(db: AppDatabase) {
     this.trainingMatrixService = new TrainingMatrixService(db);
     this.mlModelRegistryService = new MlModelRegistryService(db);
   }

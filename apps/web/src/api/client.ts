@@ -3,7 +3,6 @@ import type {
   FdrRow,
   GwCalendarRow,
   H2HComparisonResponse,
-  H2HLeagueStanding,
   LeagueStandingsPage,
   LiveGwUpdate,
   MyLeague,

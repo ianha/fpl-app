@@ -84,7 +84,6 @@ const COLUMN_ANNOTATIONS: Readonly<Record<string, Record<string, string>>> = {
   my_team_accounts: {
     entry_id:               "FPL entry/team ID used in API calls",
     auth_status:            "linked=credentials stored but not yet fully authenticated | authenticated=active | relogin_required=needs relink",
-    encrypted_credentials:  "AES-encrypted login credentials — never expose",
   },
   my_team_gameweeks: {
     account_id:            "References my_team_accounts.id",
@@ -286,13 +285,13 @@ ml_model_versions(id INTEGER PK AUTOINCREMENT, registry_id→ml_model_registry, 
   — versioned coefficient payloads; at most one active version per registry
 
 ### My Team tables (personal FPL account data)
-my_team_accounts(id INTEGER PK AUTOINCREMENT, email TEXT UNIQUE, encrypted_credentials TEXT,
+my_team_accounts(id INTEGER PK AUTOINCREMENT, email TEXT UNIQUE,
   manager_id INTEGER, entry_id INTEGER, player_first_name TEXT, player_last_name TEXT,
   player_region_name TEXT, team_name TEXT, auth_status TEXT, auth_error TEXT,
   last_authenticated_at TEXT, updated_at TEXT)
   — auth_status: 'linked'=credentials stored but not yet fully authenticated | 'authenticated'=active | 'relogin_required'=needs relink
   — one row per linked FPL account
-  — encrypted_credentials must never be exposed
+  — sensitive credential columns are intentionally hidden from AI query context
 
 my_team_gameweeks(account_id→my_team_accounts, gameweek_id→gameweeks,
   points INTEGER, total_points INTEGER, overall_rank INTEGER, rank INTEGER,
@@ -486,5 +485,5 @@ Use FDR when the user asks about fixture difficulty, who has the best fixtures, 
 5. team_h_score and team_a_score are NULL for unplayed fixtures - use WHERE finished = 1 when you need scores
 6. gw_points on my_team_picks or rival_picks may be NULL if no sync has run yet - use COALESCE(gw_points, 0) when summing
 7. players.team_id is the player's current club; for historical club affiliation use player_history.team_id, which records the actual club per match
-8. encrypted_credentials contains sensitive material - never return it
+8. Sensitive credential columns are hidden and must never be queried or returned
 9. coefficients_json, metadata_json, and sync_state.value are JSON stored as TEXT - do not treat them as normalized columns unless you parse/extract them explicitly`;

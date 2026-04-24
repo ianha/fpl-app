@@ -7,9 +7,34 @@ The FPL API exposes its SQLite database as a **Model Context Protocol (MCP)** se
 - **Protocol**: [Model Context Protocol](https://modelcontextprotocol.io/) (`2025-03-26`)
 - **Transport**: **Streamable HTTP** (stateless)
 - **Endpoint**: `POST http://localhost:4000/mcp`
-- **Auth**: None (trusted local network)
+- **Access**: Local/private hosts by default; non-local hosts require explicit opt-in plus a token.
 
 The MCP server runs automatically alongside the REST API (`npm run dev:api`).
+
+## Access Policy
+
+The MCP endpoint is guarded separately from the normal REST API and in-app AI Chat.
+
+| Variable | Default | Behavior |
+|---|---|---|
+| `FPL_LOCAL_TOOLS` | `auto` | Allow `/mcp` from localhost, loopback, `.local`, `.internal`, and private-network hosts only |
+| `FPL_LOCAL_TOOLS=off` | | Disable `/mcp` entirely |
+| `FPL_LOCAL_TOOLS=on` | | Allow non-local `/mcp` requests only with `FPL_TOOL_AUTH_TOKEN` |
+| `FPL_TOOL_AUTH_TOKEN` | unset | Required for non-local `/mcp` requests when local tools are `on` |
+
+For non-local access, send either:
+
+```http
+Authorization: Bearer <FPL_TOOL_AUTH_TOKEN>
+```
+
+or:
+
+```http
+x-fpl-tool-token: <FPL_TOOL_AUTH_TOKEN>
+```
+
+This means a Cloudflare tunnel can safely host the app and API while keeping MCP local-only by default. The AI Chat feature does not call the HTTP `/mcp` route; it uses the API's internal read-only tools through `/api/chat/stream`, so the local-only MCP gate does not break normal chat usage.
 
 ## Tools & Resources
 
@@ -17,6 +42,7 @@ The MCP server runs automatically alongside the REST API (`npm run dev:api`).
 Execute read-only SQL queries (`SELECT` or `WITH`) against the database. Mutations (`INSERT`, `UPDATE`, `DELETE`, etc.) are blocked.
 - **Parameters**: `sql` (string, required) - Valid SQL query.
 - **Returns**: A JSON array of result rows or `{ "error": "<message>" }`.
+- **Safety**: SQLite `query_only` is enabled while executing the statement. Sensitive credential columns are hidden from schema output and blocked from query text/results.
 
 ### Tool: `get_training_matrix`
 Returns a supervised learning dataset mapping historical rolling player performance to actual target-match points.
@@ -97,7 +123,7 @@ Premier League clubs.
 ## Connecting Clients
 
 ### Claude Desktop
-Add to your `claude_desktop_config.json`:
+For local use, add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
@@ -108,6 +134,8 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+For tunneled/non-local use, set `FPL_LOCAL_TOOLS=on`, set a strong `FPL_TOOL_AUTH_TOKEN`, and configure your client to send one of the token headers shown above.
 
 ### MCP Inspector
 Test the server interactively:

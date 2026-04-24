@@ -4,9 +4,8 @@ import type { PlayerDetail } from "@fpl/contracts";
 import { getPlayer, getPlayerXpts, resolveAssetUrl } from "@/api/client";
 import type { AsyncState } from "@/lib/asyncState";
 import { formatCost } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Users, Zap, Shield, Target, TrendingUp } from "lucide-react";
+import { ArrowLeft, Users, Shield, Target, TrendingUp } from "lucide-react";
 import {
   ResponsiveContainer,
   AreaChart,

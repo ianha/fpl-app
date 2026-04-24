@@ -1,6 +1,6 @@
 # FPLytics
 
-A public mirror of the [fantasy.premierleague.com](https://fantasy.premierleague.com) site to be run locally. It allows for AI integration with an LLM (chat), as well as data science, and quering ability, to allow for deeper insights not available on the official site.
+A public mirror of the [fantasy.premierleague.com](https://fantasy.premierleague.com) site to be run locally. It allows for AI integration with an LLM (chat), as well as data science and querying ability, to allow for deeper insights not available on the official site.
 
 ## Features
 
@@ -9,6 +9,7 @@ A public mirror of the [fantasy.premierleague.com](https://fantasy.premierleague
 - **React Frontend**: Dark-themed, glassmorphism UI for browsing players, fixtures, and My Team.
 - **My Team Sync**: Link your real FPL manager account for synced squad and transfer history.
 - **Advanced Metrics**: Includes xG, xA, xGI, xGP, xAP, xGIP, ICT index, tackles, and recoveries.
+- **AI Chat + Local Tools**: Cloud LLM chat can query the local database through hardened read-only tools; MCP is available for local/authorized external tool clients.
 - **Automated Tests**: Comprehensive coverage for sync logic, API endpoints, and React components.
 
 ## Tech Stack
@@ -54,6 +55,8 @@ Run these from the repository root:
 | `npm run dev:api` | Start only the API |
 | `npm run dev:web` | Start only the frontend |
 | `npm run build` | Build both apps for production |
+| `npm run typecheck` | Type-check all workspaces |
+| `npm run lint` | Type-check all workspaces with unused locals/parameters enabled |
 | `npm run test` | Run all tests |
 | `npm run test:watch` | Run all tests in watch mode |
 
@@ -92,9 +95,15 @@ Copy `.env.example` to `.env`. Key variables:
 - `PORT` (default 4000)
 - `DB_PATH` (default `./apps/api/data/fpl.sqlite`)
 - `FPL_MIN_REQUEST_INTERVAL_MS` (default 3000)
+- `PUBLIC_URL` (public API origin for share/OG URLs)
+- `WEB_URL` (public web origin for OAuth redirects)
 - `VITE_API_BASE_URL` (default unset, uses origin + `/api`)
+- `FPL_LOCAL_TOOLS` (`auto`, `off`, or `on`; controls `/mcp` exposure)
+- `FPL_TOOL_AUTH_TOKEN` (required when `FPL_LOCAL_TOOLS=on` and accessing `/mcp` from a non-local host)
 
 For My Team account linking, you must set `FPL_AUTH_SECRET` to a random string.
+
+When hosting the local app through a Cloudflare tunnel, the normal AI Chat route (`/api/chat/stream`) still works through the web app/API. The local-only gate applies to the standalone HTTP MCP endpoint (`/mcp`), not the in-app chat tool runner.
 
 ## Project Structure
 

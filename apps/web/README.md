@@ -8,7 +8,11 @@ A dark-themed, premium React application for FPL analytics, styled using Tailwin
 - `/players` (**Browser**): Searchable, filterable player list.
 - `/players/:id` (**Player Detail**): Points history (Area chart), attributes (Radar chart).
 - `/fixtures` (**Fixtures**): Gameweek navigable matches.
+- `/fixtures/fdr` (**Fixture Difficulty**): FDR-focused fixture planner.
 - `/teams/:id` (**Team Detail**): Squad by position, upcoming matches.
+- `/my-team` (**My Team**): Linked manager dashboard, picks, transfers, live GW data, and share recaps.
+- `/leagues` and `/leagues/:leagueId/h2h/:rivalEntryId` (**Leagues/H2H**): Mini-league hub and rival comparison, including AI chat handoff.
+- `/chat` (**AI Chat**): Provider-backed natural-language analysis using the API's internal read-only tools.
 
 ## Commands
 
@@ -17,8 +21,10 @@ Run from repo root or with `-w @fpl/web`.
 | Command | Description |
 |---|---|
 | `npm run dev:web` | Start the Vite server at `http://localhost:5173` |
-| `npm run build` | Type-check and build to `dist/` |
-| `npm run test` | Run component tests via Vitest & React Testing Library |
+| `npm run build -w @fpl/web` | Type-check and build to `dist/` |
+| `npm run typecheck -w @fpl/web` | Type-check without emitting build output |
+| `npm run typecheck:unused -w @fpl/web` | Type-check with unused locals/parameters enabled |
+| `npm run test -w @fpl/web` | Run component tests via Vitest & React Testing Library |
 
 ## Architecture
 

@@ -33,4 +33,6 @@ export const env = {
   // WEB_URL: public-facing origin for the web app (e.g. https://app.fplytics.example.com).
   // Used for redirects back into the SPA after external OAuth handshakes.
   webUrl: process.env.WEB_URL?.replace(/\/$/, "") ?? "http://localhost:5173",
+  localTools: process.env.FPL_LOCAL_TOOLS ?? "auto",
+  toolAuthToken: process.env.FPL_TOOL_AUTH_TOKEN ?? "",
 };

@@ -10,6 +10,8 @@ The backend performs two independent tasks:
 - `syncService.ts` / `assetSyncService.ts`: Orchestrates database upserts and image downloads into `/assets`.
 - `database.ts`: Handles SQLite schema setup and data migrations using `better-sqlite3`.
 - `queryService.ts`: Read-only data queries with filtering and sorting.
+- `chat/`: AI chat provider configuration and hardened read-only database tools.
+- `mcp/createMcpRouter.ts`: Local/authorized MCP tool endpoint for external clients.
 - `createApiRouter.ts` / `app.ts`: HTTP route handlers.
 
 ## Commands
@@ -19,7 +21,10 @@ Run from repo root or with `-w @fpl/api`.
 | Command | Description |
 |---|---|
 | `npm run dev:api` | Start API server (Hot reload) |
-| `npm run test` | Run API tests (uses in-memory `:memory:` SQLite) |
+| `npm run build -w @fpl/api` | Type-check and compile the API |
+| `npm run typecheck -w @fpl/api` | Type-check without emitting build output |
+| `npm run typecheck:unused -w @fpl/api` | Type-check with unused locals/parameters enabled |
+| `npm run test -w @fpl/api` | Run API tests using temporary SQLite databases |
 
 ### Database Sync Commands
 
@@ -106,6 +111,18 @@ For experimentation with more sophisticated models, the MCP tools remain availab
 
 Both paths write to the same model registry — the most recently activated version wins.
 
+### MCP exposure and hosted tunnels
+
+The `/mcp` endpoint is intended for local or explicitly authorized tool clients:
+
+- `FPL_LOCAL_TOOLS=auto` (default): allow localhost, loopback, and private-network hosts only.
+- `FPL_LOCAL_TOOLS=off`: disable `/mcp` entirely.
+- `FPL_LOCAL_TOOLS=on`: allow non-local hosts only when the request includes `Authorization: Bearer <FPL_TOOL_AUTH_TOKEN>` or `x-fpl-tool-token: <FPL_TOOL_AUTH_TOKEN>`.
+
+This gate does not disable the in-app AI Chat. Chat requests go through `/api/chat/stream` and use the same hardened read-only SQL helpers internally, so a frontend/API hosted through a Cloudflare tunnel can still use AI Chat as long as the normal API routes are reachable.
+
+The SQL helper additionally enables SQLite `query_only`, blocks mutating statements even when they begin with `WITH`, and hides sensitive credential columns from schema output and query results.
+
 ## API Endpoints (`PORT=4000`)
 
 All responses are JSON. Read-only.
@@ -124,4 +141,4 @@ All responses are JSON. Read-only.
 Sync limits upstream fetches to avoid IP blockages by FPL. Configured via `FPL_MIN_REQUEST_INTERVAL_MS` (default: 3000ms).
 
 ## Testing
-API tests use an in-memory SQLite database, avoiding the corruption of local files.`test/fixtures.ts` generates mock data shapes equivalent to upstream FPL responses.
+API tests use temporary SQLite databases, avoiding corruption of local files. `test/fixtures.ts` generates mock data shapes equivalent to upstream FPL responses.

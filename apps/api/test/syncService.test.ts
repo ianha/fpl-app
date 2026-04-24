@@ -225,6 +225,34 @@ describe("SyncService", () => {
     ]);
   });
 
+  it("does not mark targeted player sync complete until summary sync succeeds", async () => {
+    const db = createDatabase(makeDbPath());
+    const getElementSummary = vi
+      .fn<(playerId: number) => Promise<ReturnType<typeof createElementSummaryFixture>>>()
+      .mockRejectedValueOnce(new Error("Temporary upstream failure"))
+      .mockImplementation(async (playerId: number) =>
+        createElementSummaryFixture(playerId),
+      );
+
+    const service = new SyncService(db, {
+      getBootstrap: async () => bootstrapFixture,
+      getFixtures: async () => fixturesFixture,
+      getElementSummary,
+    } as any, undefined, assetSyncStub as any);
+
+    await expect(service.syncPlayer(10)).rejects.toThrow("Temporary upstream failure");
+    expect(
+      db.prepare("SELECT value FROM sync_state WHERE key = 'player_snapshot:10'").get(),
+    ).toBeUndefined();
+
+    await service.syncPlayer(10);
+
+    expect(getElementSummary).toHaveBeenCalledTimes(2);
+    expect(
+      db.prepare("SELECT value FROM sync_state WHERE key = 'player_snapshot:10'").get(),
+    ).toMatchObject({ value: expect.any(String) });
+  });
+
   it("forces a gameweek refresh when explicitly requested", async () => {
     const db = createDatabase(makeDbPath());
     const getElementSummary = vi.fn(async (playerId: number) =>

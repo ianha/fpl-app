@@ -14,6 +14,8 @@ export type ApiKeyProviderConfig = {
   name: string;
   provider: ProviderType;
   model: string;
+  /** Higher wins when the UI wants the strongest preconfigured high-effort thinking provider. */
+  thinkingPriority?: number;
   apiKey: string;
   /** Optional base URL override. Use this for OpenAI-compatible APIs such as OpenRouter. */
   baseURL?: string;
@@ -24,6 +26,8 @@ export type OAuthProviderConfig = {
   name: string;
   provider: "google";
   model: string;
+  /** Higher wins when the UI wants the strongest preconfigured high-effort thinking provider. */
+  thinkingPriority?: number;
   auth: "oauth";
   clientId: string;
   clientSecret: string;
@@ -64,6 +68,7 @@ export function listProviderInfos(): ProviderInfo[] {
     name: c.name,
     provider: c.provider,
     model: c.model,
+    thinkingPriority: c.thinkingPriority ?? 0,
     authType: "auth" in c ? ("oauth" as const) : ("apiKey" as const),
     oauthConnected: "auth" in c ? hasTokens(c.id) : false,
   }));

@@ -18,6 +18,7 @@ export type ProviderInfo = {
   name: string;
   provider: ProviderType;
   model: string;
+  thinkingPriority: number;
   authType: "apiKey" | "oauth";
   oauthConnected: boolean;
 };

@@ -5,15 +5,20 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDatabase } from "../src/db/database.js";
 import { createApp } from "../src/app.js";
+import { env } from "../src/config/env.js";
 import { now, seedPublicData } from "./myTeamFixtures.js";
 
 let tempDir = "";
+const originalLocalTools = env.localTools;
+const originalToolAuthToken = env.toolAuthToken;
 
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fpl-mcp-router-"));
 });
 
 afterEach(() => {
+  env.localTools = originalLocalTools;
+  env.toolAuthToken = originalToolAuthToken;
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
@@ -147,6 +152,53 @@ function seedMcpManagerRoiScenario(db: ReturnType<typeof createDatabase>) {
 }
 
 describe("MCP router", () => {
+  it("denies remote MCP requests by default", async () => {
+    env.localTools = "auto";
+    env.toolAuthToken = "tool-secret";
+    const db = createDatabase(path.join(tempDir, "remote-denied.sqlite"));
+    const app = createApp(db);
+
+    const response = await request(app)
+      .post("/mcp")
+      .set("host", "fplytics.example.com")
+      .send({
+        jsonrpc: "2.0",
+        id: 99,
+        method: "tools/list",
+      })
+      .expect(403);
+
+    expect(response.body.error.message).toContain("MCP tools are disabled");
+  });
+
+  it("allows remote MCP requests only when explicitly enabled with the tool token", async () => {
+    env.localTools = "on";
+    env.toolAuthToken = "tool-secret";
+    const db = createDatabase(path.join(tempDir, "remote-token.sqlite"));
+    const app = createApp(db);
+
+    const response = await request(app)
+      .post("/mcp")
+      .set("host", "fplytics.example.com")
+      .set("authorization", "Bearer tool-secret")
+      .set("accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: 100,
+        method: "tools/call",
+        params: {
+          name: "query",
+          arguments: {
+            sql: "SELECT 1 AS ok",
+          },
+        },
+      })
+      .expect(200);
+
+    const payload = parseSseJsonPayload(response.text);
+    expect(JSON.parse(payload.result?.content?.[0]?.text ?? "[]")).toEqual([{ ok: 1 }]);
+  });
+
   it("returns training-matrix rows through the MCP tool surface", async () => {
     const db = createDatabase(path.join(tempDir, "training-matrix.sqlite"));
     seedMcpTrainingMatrixScenario(db);

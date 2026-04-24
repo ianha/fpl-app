@@ -13,6 +13,8 @@
     "seed:pending-ml-evaluation": "node --import tsx src/cli/seedPendingMlEvaluation.ts",
     "link:my-team": "node --import tsx src/cli/linkMyTeam.ts",
     "sync:my-team": "node --import tsx src/cli/syncMyTeam.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:unused": "tsc -p tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters",
     "test": "vitest run",
     "test:watch": "vitest"
   },

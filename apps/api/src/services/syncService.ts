@@ -175,13 +175,13 @@ export class SyncService {
                last_error = NULL`,
           )
           .run(playerId, now(), snapshot);
-        this.setSyncState(stateKey, snapshot);
 
         if (gameweekId !== undefined) {
           this.prepareGameweekRefresh(gameweekId, [playerId], snapshot, force);
         }
 
         await this.syncPlayerSummaries([playerId], runId, snapshot, gameweekId);
+        this.setSyncState(stateKey, snapshot);
         syncedPlayers = 1;
       } else {
         this.logInfo(`[run ${runId}] Player ${playerId} is up to date, skipping.`);

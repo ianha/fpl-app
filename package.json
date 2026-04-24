@@ -16,6 +16,9 @@
     "link:my-team": "npm run link:my-team -w @fpl/api --",
     "sync:my-team": "npm run sync:my-team -w @fpl/api --",
     "retrain:model": "npm run retrain:model -w @fpl/api --",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:unused": "npm run typecheck:unused --workspaces --if-present",
+    "lint": "npm run typecheck:unused",
     "test": "npm run test --workspaces",
     "test:watch": "npm run test:watch --workspaces"
   },

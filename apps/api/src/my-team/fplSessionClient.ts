@@ -327,28 +327,6 @@ export class FplSessionClient {
     return response.json() as Promise<T>;
   }
 
-  private async fetchText(url: string) {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        headers: {
-          ...this.getAuthHeader(),
-          referer: `${env.siteUrl}/`,
-          accept: "text/html,application/json",
-        },
-      });
-    } catch (error) {
-      throw new Error(describeNetworkError(error) ?? "Could not reach the FPL site.", { cause: error });
-    }
-    if (!this.accessToken) {
-      appendCookies(this.cookies, response);
-    }
-    if (!response.ok) {
-      throw new Error(`FPL request failed (${response.status}) for ${url}`);
-    }
-    return response.text();
-  }
-
   private async fetchTextResponse(url: string) {
     let response: Response;
     try {

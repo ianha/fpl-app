@@ -94,6 +94,16 @@ describe("ChatPage", () => {
         name: "OpenAI",
         provider: "openai",
         model: "gpt-test",
+        thinkingPriority: 10,
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+      {
+        id: "openrouter-thinking",
+        name: "OpenRouter thinking",
+        provider: "openai",
+        model: "anthropic/claude-opus-4.6",
+        thinkingPriority: 100,
         authType: "apiKey",
         oauthConnected: false,
       },
@@ -118,15 +128,112 @@ describe("ChatPage", () => {
       expect(streamChatMock).toHaveBeenCalledTimes(1);
     });
 
-    expect(streamChatMock).toHaveBeenCalledWith("openai-main", [
+    expect(streamChatMock).toHaveBeenCalledWith("openrouter-thinking", [
       { role: "user", content: "Analyze my rival Brad FC with focus on captaincy and bench." },
     ]);
+    expect(screen.getByRole("combobox")).toHaveValue("openrouter-thinking");
     expect(window.sessionStorage.getItem("fpl-chat-seed")).toBeNull();
     expect(await screen.findByText(/Rival summary ready\./i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(streamChatMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("overrides a saved default provider with the best thinking provider for a rival seed", async () => {
+    window.localStorage.setItem("fpl-chat-provider", "openai-main");
+    window.sessionStorage.setItem("fpl-chat-seed", JSON.stringify({
+      source: "h2h-rival-summary",
+      createdAt: "2026-04-16T09:00:00.000Z",
+      leagueId: 99,
+      rivalEntryId: 501,
+      rivalTeamName: "Brad FC",
+      prompt: "Analyze my rival Brad FC with focus on captaincy and bench.",
+    }));
+
+    getChatProvidersMock.mockResolvedValue([
+      {
+        id: "openai-main",
+        name: "OpenAI",
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        thinkingPriority: 10,
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+      {
+        id: "openrouter-thinking",
+        name: "Strategy desk",
+        provider: "openai",
+        model: "anthropic/claude-opus-4.6",
+        thinkingPriority: 100,
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+    ]);
+    getChatGoogleAuthUrlMock.mockResolvedValue("https://accounts.test/oauth");
+    streamChatMock.mockResolvedValue(makeReader([{ type: "done" }]));
+
+    render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(streamChatMock).toHaveBeenCalledWith("openrouter-thinking", expect.any(Array));
+    });
+    expect(screen.getByRole("combobox")).toHaveValue("openrouter-thinking");
+  });
+
+  it("does not infer a thinking provider from names when no explicit priority is set", async () => {
+    window.localStorage.setItem("fpl-chat-provider", "openai-main");
+    window.sessionStorage.setItem("fpl-chat-seed", JSON.stringify({
+      source: "h2h-rival-summary",
+      createdAt: "2026-04-16T09:00:00.000Z",
+      leagueId: 99,
+      rivalEntryId: 501,
+      rivalTeamName: "Brad FC",
+      prompt: "Analyze my rival Brad FC with focus on captaincy and bench.",
+    }));
+
+    getChatProvidersMock.mockResolvedValue([
+      {
+        id: "openai-main",
+        name: "OpenAI",
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        thinkingPriority: 0,
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+      {
+        id: "openrouter-thinking",
+        name: "OpenRouter thinking",
+        provider: "openai",
+        model: "anthropic/claude-opus-4.6",
+        thinkingPriority: 0,
+        authType: "apiKey",
+        oauthConnected: false,
+      },
+    ]);
+    getChatGoogleAuthUrlMock.mockResolvedValue("https://accounts.test/oauth");
+    streamChatMock.mockResolvedValue(makeReader([{ type: "done" }]));
+
+    render(
+      <MemoryRouter initialEntries={["/chat"]}>
+        <Routes>
+          <Route path="/chat" element={<ChatPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(streamChatMock).toHaveBeenCalledWith("openai-main", expect.any(Array));
+    });
+    expect(screen.getByRole("combobox")).toHaveValue("openai-main");
   });
 
   it("renders assistant markdown tables as structured HTML tables", async () => {
@@ -152,6 +259,7 @@ describe("ChatPage", () => {
         name: "OpenAI",
         provider: "openai",
         model: "gpt-test",
+        thinkingPriority: 20,
         authType: "apiKey",
         oauthConnected: false,
       },
@@ -205,6 +313,7 @@ describe("ChatPage", () => {
         name: "OpenAI",
         provider: "openai",
         model: "gpt-test",
+        thinkingPriority: 20,
         authType: "apiKey",
         oauthConnected: false,
       },

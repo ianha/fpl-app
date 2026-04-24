@@ -14,7 +14,6 @@ import {
   formatExpectedEdge,
   formatGapShare,
   formatOverlapLabel,
-  formatPlayerTag,
   formatSignedNumber,
   formatSignedPoints,
   formatVarianceEdge,

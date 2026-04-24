@@ -10,6 +10,7 @@ import {
   applyChatEvent,
   clearPersistedMessages,
   loadPersistedMessages,
+  pickBestHighEffortThinkingProvider,
   persistMessages,
   parseSseChunk,
   shouldAutofocusChatInput,
@@ -213,6 +214,8 @@ export function ChatPage() {
   const [pendingSeedPrompt, setPendingSeedPrompt] = useState<string | null>(
     () => loadPendingH2HChatSeed()?.prompt ?? null,
   );
+  const pendingSeed = loadPendingH2HChatSeed();
+  const shouldPreferThinkingProvider = pendingSeed?.source === "h2h-rival-summary";
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autoSentSeedRef = useRef<string | null>(null);
@@ -224,8 +227,14 @@ export function ChatPage() {
     try {
       const data = await getChatProviders();
       setProviders(data);
-      // Auto-select first available provider
       setSelectedProvider((prev) => {
+        if (shouldPreferThinkingProvider) {
+          const preferred = pickBestHighEffortThinkingProvider(data);
+          if (preferred) {
+            return preferred.id;
+          }
+        }
+
         const valid = prev && data.some((p) => p.id === prev);
         const first = data[0]?.id ?? "";
         const saved = localStorage.getItem(PROVIDER_KEY) ?? "";
@@ -235,7 +244,7 @@ export function ChatPage() {
     } catch {
       // API not available
     }
-  }, []);
+  }, [shouldPreferThinkingProvider]);
 
   useEffect(() => {
     fetchProviders();

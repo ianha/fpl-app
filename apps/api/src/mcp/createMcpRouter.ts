@@ -11,6 +11,54 @@ import {
   executeReadOnlyQuery,
   READ_ONLY_QUERY_ERROR_MESSAGE,
 } from "../chat/databaseTools.js";
+import { env } from "../config/env.js";
+
+function parseHost(host: string | undefined) {
+  if (!host) return "";
+  if (host.startsWith("[")) {
+    const closingBracket = host.indexOf("]");
+    return host.slice(1, closingBracket === -1 ? undefined : closingBracket).toLowerCase();
+  }
+  return host.split(":")[0]?.toLowerCase() ?? "";
+}
+
+function hostLooksLocal(host: string | undefined) {
+  const normalized = parseHost(host);
+  if (!normalized) return true;
+
+  if (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized.startsWith("127.") ||
+    normalized === "0.0.0.0" ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal")
+  ) {
+    return true;
+  }
+
+  if (/^10\./.test(normalized) || /^192\.168\./.test(normalized)) {
+    return true;
+  }
+
+  const private172 = normalized.match(/^172\.(\d+)\./);
+  return private172 ? Number(private172[1]) >= 16 && Number(private172[1]) <= 31 : false;
+}
+
+function hasToolToken(req: Request) {
+  if (!env.toolAuthToken) return false;
+  return (
+    req.get("authorization") === `Bearer ${env.toolAuthToken}` ||
+    req.get("x-fpl-tool-token") === env.toolAuthToken
+  );
+}
+
+function canAccessMcp(req: Request) {
+  const mode = env.localTools;
+  if (mode === "off") return false;
+  if (hostLooksLocal(req.get("host"))) return true;
+  return mode === "on" && hasToolToken(req);
+}
 
 /** Creates a fresh McpServer + transport pair for each stateless request. */
 function buildMcpServer(db: AppDatabase) {
@@ -153,6 +201,17 @@ function buildMcpServer(db: AppDatabase) {
 
 export function createMcpRouter(db: AppDatabase): Router {
   const router = Router();
+
+  router.use((req, res, next) => {
+    if (canAccessMcp(req)) {
+      next();
+      return;
+    }
+
+    res
+      .status(403)
+      .json({ jsonrpc: "2.0", error: { code: -32001, message: "MCP tools are disabled for this host." }, id: null });
+  });
 
   // POST /mcp — all JSON-RPC requests (initialize, tools/call, resources/read, …)
   router.post("/", async (req: Request, res: Response) => {

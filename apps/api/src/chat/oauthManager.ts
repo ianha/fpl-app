@@ -52,19 +52,6 @@ export function getAuthUrl(config: OAuthProviderConfig, providerId: string): str
   });
 }
 
-/** Exchange the auth code from Google's callback for tokens and persist them. */
-export async function handleCallback(code: string, providerId: string): Promise<void> {
-  // We need the client credentials for the provider; store them in the token file
-  // by providerId so we can reconstruct the client later.
-  // However, we only have code + providerId here.  The caller must have loaded the
-  // correct config; this function is only responsible for exchanging + saving tokens.
-  // Because we store clientId/clientSecret per-provider in llm-providers.json (not here),
-  // we expect the router to pass a fully initialised OAuth2Client.
-  throw new Error(
-    "handleCallback should be called via handleCallbackWithConfig — use the router wrapper.",
-  );
-}
-
 /** Exchange code with a fully-initialised client and persist tokens. */
 export async function handleCallbackWithConfig(
   config: OAuthProviderConfig,

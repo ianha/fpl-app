@@ -5,7 +5,6 @@ import { createDatabase } from "../db/database.js";
 import { MyTeamSyncService } from "../my-team/myTeamSyncService.js";
 import { hasFlag, parseOptionalPositiveIntegerArg, parseOptionalStringArg } from "./argParsers.js";
 
-type SyncResult = { syncedGameweeks: number };
 type SyncAllResult =
   | { accountId: number; entryId: number | null; syncedGameweeks: number; noop?: boolean }
   | { accountId: number; entryId: number | null; syncedGameweeks: number; error: string; isAuthError?: boolean };

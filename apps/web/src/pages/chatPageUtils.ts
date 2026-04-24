@@ -3,9 +3,37 @@ export type ProviderInfo = {
   name: string;
   provider: "anthropic" | "openai" | "google";
   model: string;
+  thinkingPriority: number;
   authType: "apiKey" | "oauth";
   oauthConnected: boolean;
 };
+
+function isUsableProvider(provider: ProviderInfo): boolean {
+  return provider.authType !== "oauth" || provider.oauthConnected;
+}
+
+export function pickBestHighEffortThinkingProvider(providers: ProviderInfo[]): ProviderInfo | null {
+  const rankedProviders = providers.filter((provider) => provider.thinkingPriority > 0);
+  if (rankedProviders.length === 0) {
+    return null;
+  }
+
+  return [...rankedProviders]
+    .sort((left, right) => {
+      const priorityDelta = right.thinkingPriority - left.thinkingPriority;
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const usabilityDelta = Number(isUsableProvider(right)) - Number(isUsableProvider(left));
+      if (usabilityDelta !== 0) {
+        return usabilityDelta;
+      }
+
+      return left.name.localeCompare(right.name);
+    })
+    .at(0) ?? null;
+}
 
 export type ToolCall = {
   id: string;
