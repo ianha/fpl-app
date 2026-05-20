@@ -76,4 +76,59 @@ describe("databaseTools", () => {
       SENSITIVE_QUERY_ERROR_MESSAGE,
     );
   });
+
+  it("handles SQL comments robustly and allows queries starting/containing comments", () => {
+    const db = createDatabase(path.join(tempDir, "database-tools-comments.sqlite"));
+    seedPublicData(db);
+
+    // Queries with comments at the start or inside should execute successfully if safe
+    expect(isSafeReadOnlyQuery("-- comment\nSELECT 1")).toBe(true);
+    expect(isSafeReadOnlyQuery("/* comment */ SELECT 1")).toBe(true);
+    expect(isSafeReadOnlyQuery("SELECT/*comment*/1")).toBe(true);
+
+    const res1 = executeReadOnlyQuery(db, "-- list first player\nSELECT id, web_name FROM players ORDER BY id LIMIT 1");
+    expect(res1[0]).toMatchObject({ id: 10, web_name: "Saka" });
+
+    const res2 = executeReadOnlyQuery(db, "SELECT id, web_name /* inline */ FROM players ORDER BY id LIMIT 1");
+    expect(res2[0]).toMatchObject({ id: 10, web_name: "Saka" });
+  });
+
+  it("blocks sensitive queries that attempt wildcard extraction or renaming", () => {
+    const db = createDatabase(path.join(tempDir, "database-tools-wildcard.sqlite"));
+    db.prepare(
+      `INSERT INTO my_team_accounts (email, encrypted_credentials, updated_at)
+       VALUES ('manager@fpl.local', 'secret-ciphertext', ?)`,
+    ).run(now());
+
+    // Block standard wildcard queries
+    expect(() => executeReadOnlyQuery(db, "SELECT * FROM my_team_accounts")).toThrow(
+      SENSITIVE_QUERY_ERROR_MESSAGE,
+    );
+    expect(() => executeReadOnlyQuery(db, "SELECT my_team_accounts.* FROM my_team_accounts")).toThrow(
+      SENSITIVE_QUERY_ERROR_MESSAGE,
+    );
+
+    // Block CTE wildcard renaming bypasses
+    expect(() =>
+      executeReadOnlyQuery(
+        db,
+        "WITH cte(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13) AS (SELECT * FROM my_team_accounts) SELECT c3 FROM cte",
+      ),
+    ).toThrow(SENSITIVE_QUERY_ERROR_MESSAGE);
+
+    // Block subquery wildcard renaming bypasses
+    expect(() =>
+      executeReadOnlyQuery(
+        db,
+        "SELECT c3 FROM (SELECT * FROM my_team_accounts) AS cte(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13)",
+      ),
+    ).toThrow(SENSITIVE_QUERY_ERROR_MESSAGE);
+
+    // Allow safe explicit queries on the same table
+    const safeRes = executeReadOnlyQuery(db, "SELECT email, team_name FROM my_team_accounts");
+    expect(safeRes).toHaveLength(1);
+    expect(safeRes[0]).toMatchObject({ email: "manager@fpl.local" });
+    expect(safeRes[0]).not.toHaveProperty("encrypted_credentials");
+  });
 });
+
